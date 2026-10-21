@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PALETTE, toonMesh, toonUnique } from '../style/toon';
+import { hasModel, model, type ModelName, type ModelOptions } from '../style/models';
 import type { Slot } from '../world/slots';
 
 export type ItemKind =
@@ -177,6 +178,9 @@ export class Item {
 
   /** Начинка на основе пиццы: сыр ниже, помидор сверху. */
   layoutBase(): void {
+    // у готовой пиццы своя модель — начинку прячем
+    const whole = (this.state === 'cooked' || this.state === 'burnt') && this.isPizza && hasModel('pizza');
+    for (const c of this.contents) c.root.visible = !whole;
     const sorted = [...this.contents].sort((a, b) => (a.kind === 'cheese' ? -1 : 1) - (b.kind === 'cheese' ? -1 : 1));
     let y = this.state === 'chopped' ? 0.016 : 0.02;
     for (const c of sorted) {
@@ -202,11 +206,19 @@ export class Item {
     this.materials = [];
     this.visual = new THREE.Group();
     this.root.add(this.visual);
-    buildVisual(this, this.visual, (c) => {
-      const m = toonUnique(c);
-      this.materials.push(m);
-      return m;
-    });
+    const own = (m: THREE.MeshToonMaterial): THREE.Material => {
+      const c = m.clone();
+      this.materials.push(c);
+      return c;
+    };
+    // Сначала пробуем модель Kenney; если её нет для этого состояния — свои примитивы.
+    if (!kenneyVisual(this, this.visual, own)) {
+      buildVisual(this, this.visual, (c) => {
+        const m = toonUnique(c);
+        this.materials.push(m);
+        return m;
+      });
+    }
     if (this.highlighted) for (const m of this.materials) m.emissive.setHex(0x553322);
   }
 
@@ -226,6 +238,107 @@ export class Item {
 }
 
 type Mat = (c: number) => THREE.Material;
+type Own = (m: THREE.MeshToonMaterial) => THREE.Material;
+
+/** Модели Kenney для продуктов. Возвращает false, если для этого состояния модели нет. */
+function kenneyVisual(item: Item, g: THREE.Group, own: Own): boolean {
+  const s = item.state;
+  const M = (name: ModelName, o: ModelOptions = {}): THREE.Group => model(name, { outline: 0.004, material: own, ...o });
+  const burnt = (m: THREE.MeshToonMaterial): THREE.Material => {
+    const c = own(m) as THREE.MeshToonMaterial;
+    c.color.setHex(0x3a2e30);
+    return c;
+  };
+  const need = (n: ModelName): boolean => hasModel(n);
+  switch (item.kind) {
+    case 'bun': {
+      if (!need('burger')) return false;
+      const bottom = new THREE.Group();
+      bottom.name = 'bottom';
+      bottom.add(M('burger', { node: 'bun-bottom', scale: 0.34, center: false }));
+      const top = new THREE.Group();
+      top.name = 'top';
+      top.add(M('burger', { node: 'bun-top', scale: 0.34, center: false }));
+      g.add(bottom, top);
+      const bh = new THREE.Box3().setFromObject(bottom).max.y;
+      top.position.y = bh + 0.006;
+      item.height = new THREE.Box3().setFromObject(g).max.y;
+      item.radius = 0.065;
+      return true;
+    }
+    case 'patty':
+      if (s === 'raw' || !need('meat-patty')) return false;
+      g.add(M('meat-patty', { size: 0.12, material: s === 'burnt' ? burnt : own }));
+      item.height = 0.025;
+      item.radius = 0.06;
+      return true;
+    case 'lettuce':
+      if (s !== 'raw' || !need('cabbage')) return false;
+      g.add(M('cabbage', { size: 0.13 }));
+      item.height = 0.11;
+      item.radius = 0.07;
+      return true;
+    case 'tomato':
+      if (s === 'raw' && need('tomato')) {
+        g.add(M('tomato', { size: 0.1 }));
+        item.height = 0.09;
+        item.radius = 0.055;
+        return true;
+      }
+      if (s === 'chopped' && need('tomato-slice')) {
+        for (let i = 0; i < 3; i++) {
+          const sl = M('tomato-slice', { size: 0.085 });
+          sl.position.set((i - 1) * 0.016, i * 0.007, 0);
+          sl.rotation.y = i * 0.7;
+          g.add(sl);
+        }
+        item.height = 0.022;
+        item.radius = 0.06;
+        return true;
+      }
+      return false;
+    case 'cheese':
+      if (s === 'raw' && need('cheese')) {
+        g.add(M('cheese', { size: 0.1 }));
+        item.height = 0.07;
+        item.radius = 0.06;
+        return true;
+      }
+      if (s === 'chopped' && need('cheese-cut')) {
+        g.add(M('cheese-cut', { size: 0.09 }));
+        item.height = 0.015;
+        item.radius = 0.055;
+        return true;
+      }
+      return false;
+    case 'potato':
+      if (s !== 'cooked' || !need('fries')) return false;
+      g.add(M('fries', { size: 0.075 }));
+      item.height = 0.11;
+      item.radius = 0.06;
+      return true;
+    case 'dough':
+      if ((s !== 'cooked' && s !== 'burnt') || !item.isPizza || !need('pizza')) return false;
+      g.add(M('pizza', { size: 0.24, material: s === 'burnt' ? burnt : own }));
+      item.height = 0.03;
+      item.radius = 0.13;
+      return true;
+    case 'plate':
+      if (!need('plate')) return false;
+      g.add(M('plate', { size: 0.24 }));
+      item.height = 0.03;
+      item.radius = 0.12;
+      return true;
+    case 'knife':
+      if (!need('cooking-knife')) return false;
+      g.add(M('cooking-knife', { size: 0.27 }));
+      item.height = 0.02;
+      item.radius = 0.1;
+      return true;
+    default:
+      return false;
+  }
+}
 
 function add(parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0, outline = 0.005): THREE.Mesh {
   const m = toonMesh(geo, mat, outline);

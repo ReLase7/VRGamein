@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { Game } from './game';
+import { loadModels } from './style/models';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -14,10 +15,18 @@ document.body.appendChild(renderer.domElement);
 const vrButton = VRButton.createButton(renderer, { optionalFeatures: ['bounded-floor', 'layers'] });
 document.body.appendChild(vrButton);
 
-const game = new Game(renderer);
-
 const overlay = document.getElementById('overlay')!;
 const playBtn = document.getElementById('playDesktop') as HTMLButtonElement;
+
+// Сначала загружаем модели Kenney, потом строим кухню.
+playBtn.disabled = true;
+await loadModels((done, total) => {
+  playBtn.textContent = `Загрузка… ${Math.round((done / total) * 100)}%`;
+});
+playBtn.disabled = false;
+playBtn.textContent = 'Играть на ПК';
+
+const game = new Game(renderer);
 const stats = document.getElementById('stats')!;
 
 game.onOverlay = (show, paused) => {

@@ -56,6 +56,10 @@ export const PALETTE = {
 let gradientMap: THREE.DataTexture | null = null;
 
 /** Трёхступенчатая карта освещения — даёт «мультяшные» резкие тени. */
+export function toonGradient(): THREE.DataTexture {
+  return getGradientMap();
+}
+
 function getGradientMap(): THREE.DataTexture {
   if (gradientMap) return gradientMap;
   const data = new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]);
@@ -145,6 +149,34 @@ export function toonMesh(
 export class StaticBatcher {
   private byColor = new Map<number, THREE.BufferGeometry[]>();
   private outlines: THREE.BufferGeometry[] = [];
+  private byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+
+  /**
+   * Добавить готовую модель (например, Kenney) в общий статичный меш.
+   * Текстурированные части группируются по материалу, однотонные — по цвету.
+   */
+  addObject(obj: THREE.Object3D, outline = true): void {
+    obj.updateMatrixWorld(true);
+    obj.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || mesh.userData.outline) return;
+      const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshToonMaterial;
+      if (mat.map) {
+        const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+        g.applyMatrix4(mesh.matrixWorld);
+        const list = this.byMaterial.get(mat) ?? [];
+        list.push(g);
+        this.byMaterial.set(mat, list);
+        if (outline) {
+          const og = outlineGeometry(mesh.geometry);
+          og.applyMatrix4(mesh.matrixWorld);
+          this.outlines.push(og.index ? og.toNonIndexed() : og);
+        }
+      } else {
+        this.add(mesh.geometry, mat.color.getHex(), mesh.matrixWorld, outline);
+      }
+    });
+  }
 
   add(geo: THREE.BufferGeometry, color: number, matrix: THREE.Matrix4, outline = true): void {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
@@ -177,6 +209,11 @@ export class StaticBatcher {
       mesh.matrixAutoUpdate = false;
       group.add(mesh);
     }
+    for (const [mat, geos] of this.byMaterial) {
+      const mesh = new THREE.Mesh(mergeList(geos), mat);
+      mesh.matrixAutoUpdate = false;
+      group.add(mesh);
+    }
     if (this.outlines.length) {
       const merged = mergeList(this.outlines);
       const mesh = new THREE.Mesh(merged, outlineMaterial(outlineThickness));
@@ -194,6 +231,8 @@ function mergeList(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
   for (const g of geos) count += g.getAttribute('position').count;
   const pos = new Float32Array(count * 3);
   const nor = new Float32Array(count * 3);
+  const withUv = geos.every((g) => !!g.getAttribute('uv'));
+  const uv = withUv ? new Float32Array(count * 2) : null;
   let off = 0;
   for (const g of geos) {
     const ng = g.index ? g.toNonIndexed() : g;
@@ -201,11 +240,13 @@ function mergeList(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
     const n = ng.getAttribute('normal');
     pos.set(p.array as Float32Array, off * 3);
     if (n) nor.set(n.array as Float32Array, off * 3);
+    if (uv) uv.set(ng.getAttribute('uv').array as Float32Array, off * 2);
     off += p.count;
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   out.computeBoundingSphere();
   return out;
 }

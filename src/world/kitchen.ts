@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PALETTE, StaticBatcher, toon, toonMesh, toonUnique } from '../style/toon';
 import { makeSign } from '../ui/canvasPanel';
+import { hasModel, model, type ModelName, type ModelOptions } from '../style/models';
 import type { ItemKind } from '../items/item';
 import { Slot, type Surface } from './slots';
 
@@ -58,6 +59,15 @@ export interface Kitchen {
 export function buildKitchen(): Kitchen {
   const root = new THREE.Group();
   const b = new StaticBatcher();
+  /** Поставить модель Kenney в статичную часть кухни. Возвращает false, если модели нет. */
+  const place = (name: ModelName, x: number, y: number, z: number, rotY: number, o: ModelOptions, outline = true): boolean => {
+    if (!hasModel(name)) return false;
+    const m = model(name, { ...o, outline: 0 });
+    m.position.set(x, y, z);
+    m.rotation.y = rotY;
+    b.addObject(m, outline);
+    return true;
+  };
   const floorB = new StaticBatcher();
   const T = COUNTER_TOP;
   const W = ROOM.maxX - ROOM.minX;
@@ -158,7 +168,7 @@ export function buildKitchen(): Kitchen {
   const addBoard = (x: number, z: number, rot: number): void => {
     const w = rot ? 0.3 : 0.42;
     const d = rot ? 0.42 : 0.3;
-    b.box(w, 0.03, d, PALETTE.woodLight, x, T + 0.015, z, 0, true);
+    if (!place('cutting-board', x, T, z, rot ? 0 : Math.PI / 2, { size: 0.42 })) b.box(w, 0.03, d, PALETTE.woodLight, x, T + 0.015, z, 0, true);
     const slot = new Slot('board', new THREE.Vector3(x, T + 0.03, z));
     boards.push(slot);
     slots.push(slot);
@@ -191,11 +201,14 @@ export function buildKitchen(): Kitchen {
     burner.position.set(px, T + 0.044, pz);
     root.add(burner);
     burners.push(burner);
-    b.add(new THREE.CylinderGeometry(0.135, 0.12, 0.012, 18), PALETTE.steelDark, new THREE.Matrix4().makeTranslation(px, T + 0.054, pz), true);
-    const rim = new THREE.TorusGeometry(0.135, 0.012, 6, 22);
-    rim.rotateX(Math.PI / 2);
-    b.add(rim, PALETTE.steelDark, new THREE.Matrix4().makeTranslation(px, T + 0.07, pz), false);
-    b.box(0.2, 0.02, 0.035, PALETTE.ink, px, T + 0.07, pz + 0.22, Math.PI / 2, false);
+    // сковорода Kenney: ручкой к игроку
+    if (!place('frying-pan', px, T + 0.048, pz, Math.PI, { scale: 0.41, center: false })) {
+      b.add(new THREE.CylinderGeometry(0.135, 0.12, 0.012, 18), PALETTE.steelDark, new THREE.Matrix4().makeTranslation(px, T + 0.054, pz), true);
+      const rim = new THREE.TorusGeometry(0.135, 0.012, 6, 22);
+      rim.rotateX(Math.PI / 2);
+      b.add(rim, PALETTE.steelDark, new THREE.Matrix4().makeTranslation(px, T + 0.07, pz), false);
+      b.box(0.2, 0.02, 0.035, PALETTE.ink, px, T + 0.07, pz + 0.22, Math.PI / 2, false);
+    }
     const slot = new Slot('pan', new THREE.Vector3(px, T + 0.06, pz));
     pans.push(slot);
     slots.push(slot);
@@ -261,9 +274,8 @@ export function buildKitchen(): Kitchen {
   // ---------- Свободные места на стойках ----------
   slots.push(new Slot('counter', new THREE.Vector3(-0.47, T, -1.08)));
   slots.push(new Slot('counter', new THREE.Vector3(1.48, T, -1.12)));
-  slots.push(new Slot('counter', new THREE.Vector3(1.48, T, -1.36)));
-  slots.push(new Slot('counter', new THREE.Vector3(1.4, T, 1.88 - 0.12)));
-  slots.push(new Slot('counter', new THREE.Vector3(-1.4, T, 1.7)));
+  slots.push(new Slot('counter', new THREE.Vector3(1.38, T, 1.78)));
+  slots.push(new Slot('counter', new THREE.Vector3(-1.38, T, 1.74)));
 
   // ---------- Ящики с продуктами (левая стойка, два ряда) ----------
   const spawners: Spawner[] = [];
@@ -283,13 +295,26 @@ export function buildKitchen(): Kitchen {
   ];
   const crate = (def: CrateDef, x: number, y0: number, cw: number, cd: number): void => {
     const [kind, z, , , deco] = def;
-    const ch = 0.16;
+    const ch = 0.11;
     b.box(cw, 0.02, cd, PALETTE.crate, x, y0 + 0.01, z, 0, true);
     b.box(cw, ch, 0.022, PALETTE.crate, x, y0 + ch / 2, z - cd / 2, 0, true);
     b.box(cw, ch, 0.022, PALETTE.crate, x, y0 + ch / 2, z + cd / 2, 0, true);
     b.box(0.022, ch, cd, PALETTE.crate, x - cw / 2, y0 + ch / 2, z, 0, true);
     b.box(0.022, ch, cd, PALETTE.crate, x + cw / 2, y0 + ch / 2, z, 0, true);
+    const decoModel: Partial<Record<ItemKind, [ModelName, ModelOptions]>> = {
+      bun: ['burger', { node: 'bun-top', scale: 0.34 }],
+      // сырые котлеты: та же модель, но розоватая
+      patty: ['meat-patty', { size: 0.11, material: (m) => { const c = m.clone(); c.color.setHex(0xffa8a8); return c; } }],
+      lettuce: ['cabbage', { size: 0.12 }],
+      tomato: ['tomato', { size: 0.095 }],
+      cheese: ['cheese', { size: 0.1 }],
+    };
+    const dm = decoModel[kind];
     for (let i = 0; i < 4; i++) {
+      if (dm && hasModel(dm[0])) {
+        place(dm[0], x + ((i % 2) - 0.5) * 0.11, y0 + 0.03 + (i % 3) * 0.02, z + (Math.floor(i / 2) - 0.5) * 0.13, i * 1.3, dm[1], false);
+        continue;
+      }
       const g = new THREE.IcosahedronGeometry(0.05, 0);
       const flat = kind === 'patty' || kind === 'lavash' ? 0.35 : 0.85;
       g.scale(1, flat, 1);
@@ -392,12 +417,34 @@ export function buildKitchen(): Kitchen {
   b.box(0.9, 0.04, 0.22, PALETTE.wood, 1.2, 2.3, ROOM.minZ + 0.11, 0, true);
   surfaces.push({ minX: -1.55, maxX: -0.65, minZ: ROOM.minZ, maxZ: ROOM.minZ + 0.22, top: 2.32 });
   surfaces.push({ minX: 0.75, maxX: 1.65, minZ: ROOM.minZ, maxZ: ROOM.minZ + 0.22, top: 2.32 });
+  const shelfY = 2.32;
+  const sz = ROOM.minZ + 0.11;
+  const shelfDecor: [ModelName, number, ModelOptions][] = [
+    ['bottle-ketchup', -1.45, { size: 0.07 }],
+    ['bottle-musterd', -1.33, { size: 0.07 }],
+    ['bottle-oil', -1.18, { size: 0.08 }],
+    ['honey', -1.02, { size: 0.09 }],
+    ['can', -0.86, { size: 0.08 }],
+    ['can', -0.75, { size: 0.08 }],
+    ['pot', 0.92, { size: 0.24 }],
+    ['pot-stew', 1.2, { size: 0.22 }],
+    ['loaf-round', 1.47, { size: 0.18 }],
+  ];
+  let decorOk = true;
+  for (const [name, x, o] of shelfDecor) decorOk = place(name, x, shelfY, sz, 0, o) && decorOk;
+  // мебель Kenney: холодильник, мойка, кофемашина, тостер, цветок, подставка для ножей
+  const F = 2; // масштаб мебели Kenney: шкафчик 0.45 → 0.9 м
+  place('kitchenFridge', -1.37, 0, ROOM.maxZ - 0.3, Math.PI, { scale: F });
+  place('kitchenCoffeeMachine', -1.62, T, 1.76, Math.PI / 2, { scale: F });
+  place('toaster', 1.6, T, 1.8, -Math.PI / 2, { scale: F });
+  place('pottedPlant', 1.5, 0, ROOM.maxZ - 0.3, 0, { scale: F });
+  place('knife-block', 1.55, T, -1.4, 0, { size: 0.16 });
   const jarColors = [0xff5a3c, 0xffd23f, 0x6ccf4a, 0x7fd6ff, 0xc77dff];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 5 && !decorOk; i++) {
     const g = new THREE.CylinderGeometry(0.06, 0.06, 0.14 + (i % 2) * 0.05, 10);
     b.add(g, jarColors[i], new THREE.Matrix4().makeTranslation(-1.45 + i * 0.18, 2.39 + (i % 2) * 0.025, ROOM.minZ + 0.11), true);
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3 && !decorOk; i++) {
     const g = new THREE.CylinderGeometry(0.11, 0.1, 0.15, 14);
     b.add(g, PALETTE.steel, new THREE.Matrix4().makeTranslation(0.92 + i * 0.28, 2.395, ROOM.minZ + 0.11), true);
   }
