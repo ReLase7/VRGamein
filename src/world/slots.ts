@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Item } from '../items/item';
 
-export type SlotType = 'counter' | 'board' | 'pan' | 'fryer' | 'oven' | 'tray' | 'serve' | 'knife';
+export type SlotType = 'counter' | 'board' | 'pan' | 'fryer' | 'oven' | 'tray' | 'serve' | 'knife' | 'pin';
 
 /** Точка «прилипания»: на неё можно поставить предмет. */
 export class Slot {
@@ -31,6 +31,8 @@ export class Slot {
         return item.kind === 'plate';
       case 'knife':
         return item.kind === 'knife';
+      case 'pin':
+        return item.kind === 'pin';
     }
   }
 }

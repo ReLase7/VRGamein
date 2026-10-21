@@ -78,15 +78,21 @@ export class Cooking {
     this.updateHeat(dt, camPos, puffNow);
   }
 
-  /** Работает ли рука у станции: удар ножом сверху вниз или удержание курка/E. Возвращает прибавку прогресса. */
-  private work(dt: number, h: Hand, box: THREE.Box3, aimBox: THREE.Box3 | null, holdTime: number): number {
+  /**
+   * Работает ли рука у станции. Нужен инструмент в руке: нож (резать) или скалка (тесто).
+   * Ножом — удары сверху вниз, скалкой — катать туда-сюда; или просто держать курок/E.
+   * Возвращает прибавку прогресса.
+   */
+  private work(dt: number, h: Hand, box: THREE.Box3, aimBox: THREE.Box3 | null, holdTime: number, tool: 'knife' | 'pin'): number {
+    if (h.held?.kind !== tool) return 0;
     const near = h.isVR ? box.containsPoint(h.pos) : aimBox === box;
     if (!near) return 0;
-    if (h.isVR && h.held?.kind === 'knife' && h.vel.y < -0.7 && this.strokeCooldown <= 0) {
+    if (h.isVR && tool === 'knife' && h.vel.y < -0.7 && this.strokeCooldown <= 0) {
       this.strokeCooldown = 0.18;
       return CHOP_PER_STROKE;
     }
-    if (h.use && (!h.held || h.held.kind === 'knife')) return dt / holdTime;
+    if (h.isVR && tool === 'pin' && Math.hypot(h.vel.x, h.vel.z) > 0.35) return (dt / holdTime) * 1.6;
+    if (h.use) return dt / holdTime;
     return 0;
   }
 
@@ -98,7 +104,7 @@ export class Cooking {
     }
     let worked = false;
     for (const h of hands) {
-      const add = this.work(dt, h, box, aimBox, CHOP_HOLD_TIME);
+      const add = this.work(dt, h, box, aimBox, CHOP_HOLD_TIME, item.kind === 'dough' ? 'pin' : 'knife');
       if (add <= 0) continue;
       worked = true;
       item.chop += add;
@@ -132,7 +138,7 @@ export class Cooking {
       return;
     }
     for (const h of hands) {
-      const add = this.work(dt, h, sp.box, aimBox, SPIT_HOLD_TIME);
+      const add = this.work(dt, h, sp.box, aimBox, SPIT_HOLD_TIME, 'knife');
       if (add <= 0) continue;
       this.spitProgress += add;
       this.holdTick += add >= CHOP_PER_STROKE ? 1 : dt;

@@ -8,6 +8,7 @@ import type { Sfx } from '../audio/sfx';
 import type { Particles } from '../world/particles';
 
 const GRAVITY = -9.8;
+const isTool = (i: Item): boolean => i.kind === 'knife' || i.kind === 'pin';
 const MAX_ITEMS = 40;
 
 export interface GrabTarget {
@@ -48,11 +49,21 @@ export class ItemWorld {
     return item;
   }
 
-  /** Нож всегда один — кладём его на подставку у доски. */
-  ensureKnife(): void {
-    if (this.items.some((i) => i.kind === 'knife')) return;
-    const knife = this.spawn('knife', this.kitchen.knifeSlot.pos);
-    this.snap(knife, this.kitchen.knifeSlot, false);
+  /** У каждой доски должны быть нож и скалка. Потерянные инструменты появляются на своих местах. */
+  ensureTools(): void {
+    for (const [kind, slots] of [
+      ['knife', this.kitchen.knifeSlots],
+      ['pin', this.kitchen.pinSlots],
+    ] as const) {
+      let count = this.items.filter((i) => i.kind === kind && i.mode !== 'dead').length;
+      for (const slot of slots) {
+        if (count >= slots.length) break;
+        if (slot.occupant) continue;
+        const tool = this.spawn(kind, slot.pos);
+        this.snap(tool, slot, false);
+        count++;
+      }
+    }
   }
 
   remove(item: Item): void {
@@ -69,8 +80,8 @@ export class ItemWorld {
   }
 
   clearAll(): void {
-    for (const it of [...this.items]) if (it.kind !== 'knife') this.remove(it);
-    for (const s of this.kitchen.slots) if (s.occupant && s.occupant.kind !== 'knife') s.occupant = null;
+    for (const it of [...this.items]) if (!isTool(it)) this.remove(it);
+    for (const s of this.kitchen.slots) if (s.occupant && !isTool(s.occupant)) s.occupant = null;
   }
 
   /** Самый старый лишний предмет пропадает, чтобы не уронить fps. */
@@ -142,6 +153,13 @@ export class ItemWorld {
     if (item.slot) {
       item.slot.occupant = null;
       item.slot = null;
+    }
+    // то, что лежало сверху, падает
+    const base = item.root.position;
+    for (const o of this.items) {
+      if (o === item || o.mode !== 'rest') continue;
+      const op = o.root.position;
+      if (op.y > base.y + 0.005 && Math.hypot(op.x - base.x, op.z - base.z) < item.radius) o.mode = 'free';
     }
     item.mode = 'held';
     item.vel.set(0, 0, 0);
@@ -254,9 +272,9 @@ export class ItemWorld {
     this.fx.puff(new THREE.Vector3(this.kitchen.trash.pos.x, this.kitchen.trash.top, this.kitchen.trash.pos.z), 0xb8f08f);
     this.sfx.play('trash', p);
     this.onTrashed(item);
-    if (item.kind === 'knife') {
+    if (isTool(item)) {
       this.remove(item);
-      this.ensureKnife();
+      this.ensureTools();
       return;
     }
     this.remove(item);
@@ -292,10 +310,10 @@ export class ItemWorld {
       if (it.mode === 'rest' && it.root.position.y < 0.01) {
         if (it.floorTime < 0) it.floorTime = this.time;
         const age = this.time - it.floorTime;
-        if (it.kind === 'knife' && age > 2.5) {
+        if (isTool(it) && age > 2.5) {
           this.fx.puff(it.root.position);
           this.remove(it);
-          this.ensureKnife();
+          this.ensureTools();
         } else if (age > 120) {
           this.fx.puff(it.root.position);
           this.remove(it);
@@ -319,6 +337,7 @@ export class ItemWorld {
     if (p.x > ROOM.maxX - r) { p.x = ROOM.maxX - r; it.vel.x *= -0.3; }
     if (p.z < ROOM.minZ + r) { p.z = ROOM.minZ + r; it.vel.z *= -0.3; }
     if (p.z > ROOM.maxZ - r) { p.z = ROOM.maxZ - r; it.vel.z *= -0.3; }
+    if (p.y > ROOM.height - it.height) { p.y = ROOM.height - it.height; it.vel.y = -Math.abs(it.vel.y) * 0.3; }
 
     // мусорка: влетел сверху
     const tr = this.kitchen.trash;
@@ -343,6 +362,7 @@ export class ItemWorld {
     // стойки и шкафы — сплошные: предмет, прилетевший сбоку, отскакивает, а не проходит внутрь
     for (const sd of this.kitchen.solids) {
       if (p.y >= sd.top - 0.005 || prevY >= sd.top - 0.02) continue;
+      if (p.y + it.height < (sd.bottom ?? 0)) continue;
       if (p.x <= sd.minX - r || p.x >= sd.maxX + r || p.z <= sd.minZ - r || p.z >= sd.maxZ + r) continue;
       let best = Infinity;
       let side: string | null = null;
@@ -364,6 +384,15 @@ export class ItemWorld {
     for (const s of this.kitchen.surfaces) {
       if (!onSurface(s, p.x, p.z) || prevY < s.top - 0.02 || p.y > s.top) continue;
       if (landY === null || s.top > landY) landY = s.top;
+    }
+    // предметы можно ставить друг на друга
+    for (const o of this.items) {
+      if (o === it || (o.mode !== 'rest' && o.mode !== 'slot')) continue;
+      const op = o.root.position;
+      const top = op.y + o.height;
+      if (prevY < top - 0.02 || p.y > top) continue;
+      if (Math.hypot(p.x - op.x, p.z - op.z) > Math.max(0.04, o.radius * 0.8)) continue;
+      if (landY === null || top > landY) landY = top;
     }
     if (landY === null && p.y <= 0) landY = 0;
     if (landY === null) return;

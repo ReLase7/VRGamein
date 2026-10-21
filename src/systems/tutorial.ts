@@ -42,7 +42,10 @@ function stationPos(k: Kitchen, at: Station): THREE.Vector3 {
 
 function chopText(kind: ItemKind, isVR: boolean): string {
   const verb = CHOP_WORD[kind] ?? 'Режьте';
-  return isVR ? `${verb}: стучите ножом по доске или держите курок над ней` : `${verb}: наведитесь на доску и держите E`;
+  if (kind === 'dough') {
+    return isVR ? `${verb}: возьмите скалку и катайте ей по доске (или держите курок)` : `${verb}: возьмите скалку, наведитесь на доску и держите E`;
+  }
+  return isVR ? `${verb}: возьмите нож и стучите им по доске (или держите курок)` : `${verb}: возьмите нож, наведитесь на доску и держите E`;
 }
 
 function crateHint(k: Kitchen, kind: ItemKind, isVR: boolean): Hint {
@@ -59,7 +62,7 @@ function makeHint(key: string, items: Item[], k: Kitchen, isVR: boolean): Hint {
   const kind = key.split(':')[0] as ItemKind;
   if (key === 'doner') {
     return {
-      text: isVR ? 'Срежьте мясо с вертела: держите курок у вертела или стучите ножом' : 'Срежьте мясо с вертела: наведитесь на вертел и держите E',
+      text: isVR ? 'Срежьте мясо с вертела: возьмите нож и стучите им у вертела (или держите курок)' : 'Срежьте мясо с вертела: возьмите нож, наведитесь на вертел и держите E',
       target: k.spit.pos.clone().setY(k.spit.pos.y + 0.75),
     };
   }

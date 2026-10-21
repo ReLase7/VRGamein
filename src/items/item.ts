@@ -15,7 +15,8 @@ export type ItemKind =
   | 'lavash'
   | 'doner'
   | 'plate'
-  | 'knife';
+  | 'knife'
+  | 'pin';
 export type ItemState = 'raw' | 'chopped' | 'cooked' | 'burnt';
 export type ItemMode = 'free' | 'rest' | 'held' | 'slot' | 'onPlate' | 'dead';
 
@@ -38,6 +39,7 @@ export const KIND_ACC: Record<ItemKind, string> = {
   doner: 'мясо донера',
   plate: 'тарелку',
   knife: 'нож',
+  pin: 'скалку',
 };
 
 /** Ключ ингредиента в рецепте, например «patty:cooked». Булка всегда просто «bun». */
@@ -126,7 +128,7 @@ export class Item {
   setHighlight(on: boolean): void {
     if (on === this.highlighted) return;
     this.highlighted = on;
-    for (const m of this.materials) m.emissive.setHex(on ? 0x553322 : 0x000000);
+    for (const m of this.materials) m.emissive.setHex(on ? 0x553322 : ((m.userData.baseEmissive as number | undefined) ?? 0));
   }
 
   /** Центр предмета в мировых координатах (для расстояния до руки). */
@@ -250,6 +252,12 @@ function kenneyVisual(item: Item, g: THREE.Group, own: Own): boolean {
     return c;
   };
   const need = (n: ModelName): boolean => hasModel(n);
+  /** Своя копия материала, перекрашенная (умножение цвета на текстуру). */
+  const tint = (hex: number) => (m: THREE.MeshToonMaterial): THREE.Material => {
+    const c = own(m) as THREE.MeshToonMaterial;
+    c.color.setHex(hex);
+    return c;
+  };
   switch (item.kind) {
     case 'bun': {
       if (!need('burger')) return false;
@@ -267,16 +275,23 @@ function kenneyVisual(item: Item, g: THREE.Group, own: Own): boolean {
       return true;
     }
     case 'patty':
-      if (s === 'raw' || !need('meat-patty')) return false;
-      g.add(M('meat-patty', { size: 0.12, material: s === 'burnt' ? burnt : own }));
+      if (!need('meat-patty')) return false;
+      g.add(M('meat-patty', { size: 0.12, material: s === 'burnt' ? burnt : s === 'raw' ? tint(0xffa8a8) : own }));
       item.height = 0.025;
       item.radius = 0.06;
       return true;
     case 'lettuce':
-      if (s !== 'raw' || !need('cabbage')) return false;
-      g.add(M('cabbage', { size: 0.13 }));
-      item.height = 0.11;
-      item.radius = 0.07;
+      if (!need('cabbage')) return false;
+      if (s === 'raw') {
+        g.add(M('cabbage', { size: 0.13 }));
+        item.height = 0.11;
+        item.radius = 0.07;
+      } else {
+        // нарезанный салат — горка листьев (тот же кочан, сплющенный)
+        g.add(M('cabbage', { size: 0.11, stretch: [1, 0.3, 1] }));
+        item.height = 0.03;
+        item.radius = 0.06;
+      }
       return true;
     case 'tomato':
       if (s === 'raw' && need('tomato')) {
@@ -312,16 +327,95 @@ function kenneyVisual(item: Item, g: THREE.Group, own: Own): boolean {
       }
       return false;
     case 'potato':
-      if (s !== 'cooked' || !need('fries')) return false;
-      g.add(M('fries', { size: 0.075 }));
-      item.height = 0.11;
+      if (s === 'cooked' && need('fries')) {
+        g.add(M('fries', { size: 0.075 }));
+        item.height = 0.11;
+        item.radius = 0.06;
+        return true;
+      }
+      if (s === 'raw' && need('egg')) {
+        // клубень: «яйцо», перекрашенное в коричневый и положенное набок
+        const p = M('egg', { size: 0.07, material: tint(0xb07a48) });
+        p.rotation.z = Math.PI / 2;
+        p.position.set(0.05, 0.035, 0);
+        g.add(p);
+        item.height = 0.07;
+        item.radius = 0.065;
+        return true;
+      }
+      if (need('celery-stick')) {
+        // брусочки: стебли сельдерея, перекрашенные в цвет картошки
+        const col = s === 'burnt' ? 0x3a2e30 : 0xfff0a0;
+        for (let i = 0; i < 6; i++) {
+          const st = M('celery-stick', { size: 0.016, material: tint(col) });
+          st.rotation.set(Math.PI / 2, 0, (i - 2.5) * 0.35);
+          st.position.set((i % 3 - 1) * 0.02, 0.008 + Math.floor(i / 3) * 0.012, -0.04);
+          g.add(st);
+        }
+        item.height = 0.03;
+        item.radius = 0.06;
+        return true;
+      }
+      return false;
+    case 'chicken': {
+      if (!need('turkey')) return false;
+      // сырая курица светлее: текстура жареной индейки + розовая подсветка
+      const raw = (m: THREE.MeshToonMaterial): THREE.Material => {
+        const c = tint(0xffd0c8)(m) as THREE.MeshToonMaterial;
+        c.emissive.setHex(0x8a4a44);
+        c.userData.baseEmissive = 0x8a4a44;
+        return c;
+      };
+      g.add(M('turkey', { size: 0.12, material: s === 'raw' ? raw : s === 'burnt' ? burnt : own }));
+      item.height = 0.05;
+      item.radius = 0.07;
+      return true;
+    }
+    case 'dough':
+      if ((s === 'cooked' || s === 'burnt') && item.isPizza && need('pizza')) {
+        g.add(M('pizza', { size: 0.24, material: s === 'burnt' ? burnt : own }));
+        item.height = 0.03;
+        item.radius = 0.13;
+        return true;
+      }
+      if (s === 'raw' && need('egg')) {
+        // шарик теста
+        g.add(M('egg', { size: 0.1, stretch: [1, 0.55, 1], material: tint(0xfff6e0) }));
+        item.height = 0.08;
+        item.radius = 0.065;
+        return true;
+      }
+      if ((s === 'chopped' || ((s === 'cooked' || s === 'burnt') && !item.isPizza)) && need('cutting-board-round')) {
+        // раскатанная основа: круглая «лепёшка»
+        const col = s === 'chopped' ? 0xfff2d6 : s === 'cooked' ? 0xffcc80 : 0x3a2e30;
+        g.add(M('cutting-board-round', { size: 0.24, stretch: [1, 0.45, 1], material: tint(col) }));
+        item.height = 0.03;
+        item.radius = 0.13;
+        return true;
+      }
+      return false;
+    case 'lavash':
+      if (!need('cutting-board-round')) return false;
+      g.add(M('cutting-board-round', { size: 0.22, stretch: [1, 0.25, 1], material: tint(0xffe8b8) }));
+      item.height = 0.01;
+      item.radius = 0.11;
+      return true;
+    case 'doner':
+      if (!need('bacon')) return false;
+      for (let i = 0; i < 3; i++) {
+        const sl = M('bacon', { size: 0.09, material: tint(i % 2 ? 0xc8784a : 0xa05a30) });
+        sl.position.set((i - 1) * 0.018, i * 0.008, 0);
+        sl.rotation.y = i * 0.9;
+        g.add(sl);
+      }
+      item.height = 0.03;
       item.radius = 0.06;
       return true;
-    case 'dough':
-      if ((s !== 'cooked' && s !== 'burnt') || !item.isPizza || !need('pizza')) return false;
-      g.add(M('pizza', { size: 0.24, material: s === 'burnt' ? burnt : own }));
-      item.height = 0.03;
-      item.radius = 0.13;
+    case 'pin':
+      if (!need('rollingPin')) return false;
+      g.add(M('rollingPin', { size: 0.3 }));
+      item.height = 0.04;
+      item.radius = 0.12;
       return true;
     case 'plate':
       if (!need('plate')) return false;
@@ -565,6 +659,14 @@ function buildVisual(item: Item, g: THREE.Group, mat: Mat): void {
       rim.rotateX(Math.PI / 2);
       add(g, rim, mat(0x9fe0ff), 0, 0.019, 0, 0);
       item.height = 0.03;
+      item.radius = 0.12;
+      break;
+    }
+    case 'pin': {
+      const roll = new THREE.CylinderGeometry(0.025, 0.025, 0.2, 10).rotateZ(Math.PI / 2);
+      add(g, roll, mat(PALETTE.woodLight), 0, 0.025, 0, 0.004);
+      for (const side of [-1, 1]) add(g, new THREE.CylinderGeometry(0.01, 0.01, 0.06, 6).rotateZ(Math.PI / 2), mat(PALETTE.wood), side * 0.13, 0.025, 0, 0.003);
+      item.height = 0.05;
       item.radius = 0.12;
       break;
     }

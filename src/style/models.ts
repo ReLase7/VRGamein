@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { outlineGeometry, outlineMaterial, toonGradient } from './toon';
 
 /**
- * Модели Kenney (Food Kit и Furniture Kit, лицензия CC0).
+ * Модели Kenney (Food Kit, лицензия CC0).
  * Загружаются один раз при старте, дальше из кеша выдаются копии
  * с мультяшными материалами и обводкой, как у остальной игры.
  */
@@ -27,14 +27,18 @@ const FOOD = [
   'bottle-ketchup',
   'bottle-musterd',
   'bottle-oil',
-  'knife-block',
   'honey',
   'can',
   'loaf-round',
+  'rollingPin',
+  'turkey',
+  'egg',
+  'cutting-board-round',
+  'bacon',
+  'celery-stick',
 ] as const;
-const FURNITURE = ['kitchenFridge', 'kitchenCoffeeMachine', 'toaster', 'pottedPlant'] as const;
 
-export type ModelName = (typeof FOOD)[number] | (typeof FURNITURE)[number];
+export type ModelName = (typeof FOOD)[number];
 
 const cache = new Map<string, THREE.Object3D>();
 const toonCache = new Map<THREE.Material, THREE.MeshToonMaterial>();
@@ -60,7 +64,6 @@ export async function loadModels(onProgress?: (done: number, total: number) => v
   const base = import.meta.env.BASE_URL + 'models/';
   const jobs: [string, string][] = [
     ...FOOD.map((n) => [n, `${base}food/${n}.glb`] as [string, string]),
-    ...FURNITURE.map((n) => [n, `${base}furniture/${n}.glb`] as [string, string]),
   ];
   let done = 0;
   await Promise.all(
@@ -95,6 +98,8 @@ export interface ModelOptions {
   node?: string;
   /** Поставить на пол (низ модели в y=0) и отцентровать по x/z. */
   center?: boolean;
+  /** Растянуть по осям после масштаба (например, сплющить по высоте). */
+  stretch?: [number, number, number];
   /** Своя копия материалов (чтобы подсвечивать предмет отдельно). */
   material?: (m: THREE.MeshToonMaterial) => THREE.Material;
 }
@@ -128,6 +133,7 @@ export function model(name: ModelName, opts: ModelOptions = {}): THREE.Group {
   const sz = box.getSize(new THREE.Vector3());
   const scale = opts.scale ?? (opts.size ? opts.size / Math.max(sz.x, sz.z, 1e-6) : 1);
   holder.scale.setScalar(scale);
+  if (opts.stretch) holder.scale.multiply(new THREE.Vector3(...opts.stretch));
   if (opts.center !== false) {
     const c = box.getCenter(new THREE.Vector3());
     obj.position.x -= c.x;

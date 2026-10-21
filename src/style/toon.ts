@@ -136,6 +136,7 @@ export function toonMesh(
   const mesh = new THREE.Mesh(geo, material);
   if (outline > 0) {
     const o = new THREE.Mesh(outlineGeometry(geo), outlineMaterial(outline));
+    o.userData.outline = true;
     o.raycast = () => {};
     mesh.add(o);
   }
@@ -149,7 +150,7 @@ export function toonMesh(
 export class StaticBatcher {
   private byColor = new Map<number, THREE.BufferGeometry[]>();
   private outlines: THREE.BufferGeometry[] = [];
-  private byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  private byMaterial = new Map<string, { mat: THREE.Material; geos: THREE.BufferGeometry[] }>();
 
   /**
    * Добавить готовую модель (например, Kenney) в общий статичный меш.
@@ -164,9 +165,11 @@ export class StaticBatcher {
       if (mat.map) {
         const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
         g.applyMatrix4(mesh.matrixWorld);
-        const list = this.byMaterial.get(mat) ?? [];
-        list.push(g);
-        this.byMaterial.set(mat, list);
+        // одинаковая текстура и цвет — один общий меш, даже если материалы — разные копии
+        const key = `${mat.map.uuid}:${mat.color.getHexString()}`;
+        const entry = this.byMaterial.get(key) ?? { mat, geos: [] };
+        entry.geos.push(g);
+        this.byMaterial.set(key, entry);
         if (outline) {
           const og = outlineGeometry(mesh.geometry);
           og.applyMatrix4(mesh.matrixWorld);
@@ -209,7 +212,7 @@ export class StaticBatcher {
       mesh.matrixAutoUpdate = false;
       group.add(mesh);
     }
-    for (const [mat, geos] of this.byMaterial) {
+    for (const { mat, geos } of this.byMaterial.values()) {
       const mesh = new THREE.Mesh(mergeList(geos), mat);
       mesh.matrixAutoUpdate = false;
       group.add(mesh);

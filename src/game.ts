@@ -100,7 +100,7 @@ export class Game {
     this.sfx.setEnabled(this.settings.sound);
     this.world = new ItemWorld(this.scene, this.kitchen, this.sfx, this.fx);
     this.cooking = new Cooking(this.scene, this.kitchen, this.sfx, this.fx, this.world);
-    this.world.ensureKnife();
+    this.world.ensureTools();
 
     // табло на задней стене
     const ob = this.orderBoard.panel.mesh;
@@ -230,7 +230,7 @@ export class Game {
 
   private startRound(): void {
     this.world.clearAll();
-    this.world.ensureKnife();
+    this.world.ensureTools();
     this.cooking.reset();
     this.fx.clear();
     this.orders.reset();
