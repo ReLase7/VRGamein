@@ -21,17 +21,17 @@ const playBtn = document.getElementById('playDesktop') as HTMLButtonElement;
 // Сначала загружаем модели Kenney, потом строим кухню.
 playBtn.disabled = true;
 await loadModels((done, total) => {
-  playBtn.textContent = `Загрузка… ${Math.round((done / total) * 100)}%`;
+  playBtn.textContent = `Жүктелуде… ${Math.round((done / total) * 100)}%`;
 });
 playBtn.disabled = false;
-playBtn.textContent = 'Играть на ПК';
+playBtn.textContent = 'ДК-да ойнау';
 
 const game = new Game(renderer);
 const stats = document.getElementById('stats')!;
 
 game.onOverlay = (show, paused) => {
   overlay.classList.toggle('hidden', !show);
-  playBtn.textContent = paused ? 'Продолжить' : 'Играть на ПК';
+  playBtn.textContent = paused ? 'Жалғастыру' : 'ДК-да ойнау';
 };
 game.onStats = (s) => {
   stats.textContent = s;

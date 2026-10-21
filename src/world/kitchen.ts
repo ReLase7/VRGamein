@@ -190,9 +190,9 @@ export function buildKitchen(): Kitchen {
     surfaces.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top: T + 0.03 });
   };
   addBoard(-0.82, -1.15, 0);
-  backSign('Доска', -0.82, '#ffe08a');
+  backSign('Тақтай', -0.82, '#ffe08a');
   addBoard(1.48, 1.45, 1);
-  addSign('Доска', 0.26, 1.19, T - 0.15, 1.45, -Math.PI / 2, '#ffe08a');
+  addSign('Тақтай', 0.26, 1.19, T - 0.15, 1.45, -Math.PI / 2, '#ffe08a');
   // у каждой доски — свой нож и своя скалка
   const knifeSlots = [new Slot('knife', new THREE.Vector3(-0.47, T, -1.33), 0.25), new Slot('knife', new THREE.Vector3(1.48, T, 1.12), 0)];
   const pinSlots = [new Slot('pin', new THREE.Vector3(-0.47, T, -1.08), 0.25), new Slot('pin', new THREE.Vector3(1.5, T, 1.8), 0)];
@@ -297,14 +297,14 @@ export function buildKitchen(): Kitchen {
   // ---------- Ящики с продуктами (левая стойка, один длинный ряд до стены) ----------
   const spawners: Spawner[] = [];
   const crates: [ItemKind, string, string][] = [
-    ['bun', 'Булки', '#ffd58a'],
-    ['patty', 'Котлеты', '#ffb3c0'],
+    ['bun', 'Тоқаш', '#ffd58a'],
+    ['patty', 'Котлет', '#ffb3c0'],
     ['lettuce', 'Салат', '#b8f08f'],
-    ['tomato', 'Помидоры', '#ff9a8a'],
-    ['cheese', 'Сыр', '#ffe27a'],
-    ['potato', 'Картошка', '#e8c49a'],
-    ['chicken', 'Курица', '#ffc9c0'],
-    ['dough', 'Тесто', '#fff1d6'],
+    ['tomato', 'Қызанақ', '#ff9a8a'],
+    ['cheese', 'Ірімшік', '#ffe27a'],
+    ['potato', 'Картоп', '#e8c49a'],
+    ['chicken', 'Тауық', '#ffc9c0'],
+    ['dough', 'Қамыр', '#fff1d6'],
     ['lavash', 'Лаваш', '#f6e3b8'],
   ];
   const cw = 0.48;
@@ -343,7 +343,7 @@ export function buildKitchen(): Kitchen {
   surfaces.push({ minX: serveX - 0.21, maxX: serveX + 0.21, minZ: serveZ - 0.21, maxZ: serveZ + 0.21, top: T + 0.02 });
   const serve = new Slot('serve', new THREE.Vector3(serveX, T + 0.02, serveZ));
   slots.push(serve);
-  addSign('ВЫДАЧА', 0.36, ROOM.maxX - 0.1, T + 1.02, serveZ, -Math.PI / 2, '#ffd23f');
+  addSign('БЕРУ', 0.36, ROOM.maxX - 0.1, T + 1.02, serveZ, -Math.PI / 2, '#ffd23f');
   // логотип ресторана над окном выдачи
   const logo = makeLogo(0.62);
   logo.position.set(ROOM.maxX - 0.012, T + 1.48, serveZ);
@@ -371,7 +371,7 @@ export function buildKitchen(): Kitchen {
     spawnPos: new THREE.Vector3(plateStackPos.x, T + 0.12, plateStackPos.z),
   });
   surfaces.push({ minX: plateStackPos.x - 0.12, maxX: plateStackPos.x + 0.12, minZ: plateStackPos.z - 0.12, maxZ: plateStackPos.z + 0.12, top: T + 0.11 });
-  addSign('Тарелки', 0.3, 1.19, T - 0.15, plateStackPos.z, -Math.PI / 2, '#d8f0ff');
+  addSign('Тәрелке', 0.3, 1.19, T - 0.15, plateStackPos.z, -Math.PI / 2, '#d8f0ff');
 
   // ---------- Печь для пиццы ----------
   const ovenX = 1.52;
@@ -396,7 +396,7 @@ export function buildKitchen(): Kitchen {
   surfaces.push({ minX: ovenX - od / 2, maxX: ovenX + od / 2, minZ: ovenZ - ow / 2, maxZ: ovenZ + ow / 2, top: T + oh });
   // дно печи: брошенное внутрь ложится на него, а не проваливается
   surfaces.push({ minX: ovenX - od / 2, maxX: ovenX + od / 2, minZ: ovenZ - ow / 2, maxZ: ovenZ + ow / 2, top: T + 0.05 });
-  addSign('Печь', 0.26, 1.19, T - 0.15, ovenZ, -Math.PI / 2, '#ffb3a8');
+  addSign('Пеш', 0.26, 1.19, T - 0.15, ovenZ, -Math.PI / 2, '#ffb3a8');
   // стенки печи твёрдые, спереди — открытый проём
   block(ovenX - od / 2, ovenX + od / 2, ovenZ - ow / 2, ovenZ - ow / 2 + 0.05, T, T + oh);
   block(ovenX - od / 2, ovenX + od / 2, ovenZ + ow / 2 - 0.05, ovenZ + ow / 2, T, T + oh);
@@ -412,7 +412,7 @@ export function buildKitchen(): Kitchen {
   const rim = new THREE.TorusGeometry(0.2, 0.018, 6, 20);
   rim.rotateX(Math.PI / 2);
   b.add(rim, PALETTE.bin, new THREE.Matrix4().makeTranslation(trashPos.x, binH, trashPos.z), false);
-  const trashSign = makeSign('Мусор', 0.26, '#b8f08f');
+  const trashSign = makeSign('Қоқыс', 0.26, '#b8f08f');
   trashSign.position.set(trashPos.x - 0.23, 0.45, trashPos.z);
   trashSign.rotation.y = -Math.PI / 2;
   signs.push(trashSign);
@@ -502,8 +502,8 @@ export function buildKitchen(): Kitchen {
     pinSlots,
     trash: { pos: trashPos, radius: 0.2, top: binH },
     plateStackPos,
-    orderBoardPos: new THREE.Vector3(0.3, 1.8, ROOM.minZ + 0.02),
-    hudPos: new THREE.Vector3(-1.2, 1.8, ROOM.minZ + 0.02),
+    orderBoardPos: new THREE.Vector3(0.3, 1.8, ROOM.minZ + 0.04),
+    hudPos: new THREE.Vector3(-1.2, 1.86, ROOM.minZ + 0.04),
     bell,
     aimTargets,
   };

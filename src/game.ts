@@ -189,14 +189,14 @@ export class Game {
     const best = Score.load()[0];
     this.showMenu({
       title: 'Kitchen Chaos',
-      subtitle: 'Готовьте быстрее, чем горит!',
-      lines: best ? [`Рекорд: ${best.score} очков`] : ['Соберите как можно больше заказов за 3 минуты'],
+      subtitle: 'Тамақ күйгенше үлгеріңіз!',
+      lines: best ? [`Рекорд: ${best.score} ұпай`] : ['3 минутта барынша көп тапсырыс орындаңыз'],
       buttons: [
-        { id: 'start', label: '▶  Играть', color: '#ff8a5c' },
-        { id: 'turn', label: `Поворот: ${this.settings.snapAngle}°` },
-        { id: 'sound', label: `Звук: ${this.settings.sound ? 'вкл' : 'выкл'}` },
-        { id: 'tutorial', label: `Подсказки: ${this.settings.tutorial ? 'вкл' : 'выкл'}` },
-        { id: 'records', label: 'Рекорды', color: '#b8f08f' },
+        { id: 'start', label: '▶  Ойнау', color: '#ff8a5c' },
+        { id: 'turn', label: `Бұрылу: ${this.settings.snapAngle}°` },
+        { id: 'sound', label: `Дыбыс: ${this.settings.sound ? 'қосулы' : 'өшірулі'}` },
+        { id: 'tutorial', label: `Кеңестер: ${this.settings.tutorial ? 'қосулы' : 'өшірулі'}` },
+        { id: 'records', label: 'Рекордтар', color: '#b8f08f' },
       ],
     });
   }
@@ -204,9 +204,9 @@ export class Game {
   private showRecords(): void {
     const list = Score.load();
     this.showMenu({
-      title: 'Рекорды',
-      lines: list.length ? list.map((h, i) => `${i + 1}.  ${h.score} очков  ${'★'.repeat(h.stars)}${'☆'.repeat(3 - h.stars)}  ${h.date}`) : ['Пока пусто — сыграйте раунд!'],
-      buttons: [{ id: 'back', label: 'Назад' }],
+      title: 'Рекордтар',
+      lines: list.length ? list.map((h, i) => `${i + 1}.  ${h.score} ұпай  ${'★'.repeat(h.stars)}${'☆'.repeat(3 - h.stars)}  ${h.date}`) : ['Әзірге бос — бір раунд ойнаңыз!'],
+      buttons: [{ id: 'back', label: 'Артқа' }],
     });
   }
 
@@ -254,17 +254,17 @@ export class Game {
     const s = this.score;
     const next = STAR_THRESHOLDS.find((t) => t > s.score);
     this.showMenu({
-      title: 'Время вышло!',
-      subtitle: place === 0 ? 'Новый рекорд!' : `${s.score} очков`,
+      title: 'Уақыт бітті!',
+      subtitle: place === 0 ? 'Жаңа рекорд!' : `${s.score} ұпай`,
       stars: s.stars,
       lines: [
-        place === 0 ? `${s.score} очков` : `Лучший результат: ${Score.load()[0]?.score ?? s.score}`,
-        `Выдано блюд: ${s.served}   Сгорело заказов: ${s.expired}`,
-        next ? `До следующей звезды: ${next - s.score}` : 'Все звёзды собраны!',
+        place === 0 ? `${s.score} ұпай` : `Үздік нәтиже: ${Score.load()[0]?.score ?? s.score}`,
+        `Берілген тағам: ${s.served}   Кешіккен тапсырыс: ${s.expired}`,
+        next ? `Келесі жұлдызға дейін: ${next - s.score}` : 'Барлық жұлдыз жиналды!',
       ],
       buttons: [
-        { id: 'start', label: '↻  Ещё раз', color: '#ff8a5c' },
-        { id: 'menu', label: 'В меню' },
+        { id: 'start', label: '↻  Тағы да', color: '#ff8a5c' },
+        { id: 'menu', label: 'Мәзірге' },
       ],
     });
   }
@@ -280,12 +280,12 @@ export class Game {
     this.pauseReason = reason;
     this.cooking.reset();
     const buttons = [
-      { id: 'resume', label: '▶  Продолжить', color: '#ff8a5c' },
-      { id: 'start', label: '↻  Заново' },
-      { id: 'menu', label: 'В меню' },
+      { id: 'resume', label: '▶  Жалғастыру', color: '#ff8a5c' },
+      { id: 'start', label: '↻  Қайта бастау' },
+      { id: 'menu', label: 'Мәзірге' },
     ];
-    if (this.inVR) buttons.push({ id: 'exitvr', label: 'Выйти из VR', color: '#ffb3c0' });
-    this.showMenu({ title: 'Пауза', lines: [`Осталось ${Math.ceil(this.timeLeft)} с,  ${this.score.score} очков`], buttons });
+    if (this.inVR) buttons.push({ id: 'exitvr', label: 'VR-дан шығу', color: '#ffb3c0' });
+    this.showMenu({ title: 'Үзіліс', lines: [`Қалды: ${Math.ceil(this.timeLeft)} с,  ${this.score.score} ұпай`], buttons });
   }
 
   private resume(): void {

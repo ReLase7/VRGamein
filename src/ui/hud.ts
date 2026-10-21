@@ -176,8 +176,8 @@ export class OrderBoard {
     this.lastDraw = time;
     const ctx = this.panel.ctx;
     this.panel.clear();
-    sticker(ctx, 16, 10, 260, 64, '#ff5a3c', 22, 7);
-    text(ctx, 'ЗАКАЗЫ', 146, 42, 40, '#fff');
+    sticker(ctx, 16, 10, 360, 64, '#ff5a3c', 22, 7);
+    text(ctx, 'ТАПСЫРЫСТАР', 196, 42, 38, '#fff', 'center', 900, 330);
 
     const cardW = 236;
     const cardH = 290;
@@ -225,7 +225,7 @@ export class OrderBoard {
     if (orders.length === 0) {
       ctx.save();
       ctx.font = `700 34px ${FONT}`;
-      text(ctx, 'Ждём заказы…', 512, 230, 40, '#fff8e7', 'center', 800);
+      text(ctx, 'Тапсырыстар күтілуде…', 512, 230, 40, '#fff8e7', 'center', 800);
       ctx.restore();
     }
     this.panel.commit();
@@ -234,7 +234,7 @@ export class OrderBoard {
 
 /** Табло: время, очки, звёзды и подсказка обучения. */
 export class HudBoard {
-  readonly panel = new CanvasPanel(512, 400, 0.85);
+  readonly panel = new CanvasPanel(512, 540, 0.85);
   private lastKey = '';
 
   draw(timeLeft: number, score: number, delta: number, deltaAge: number, hint: string, fps: number): void {
@@ -250,7 +250,7 @@ export class HudBoard {
     text(ctx, `${m}:${s.toString().padStart(2, '0')}`, 129, 66, 64, secs <= 15 ? '#fff' : INK, 'center', 900);
     sticker(ctx, 262, 10, 230, 110, '#7fd6ff', 22, 7);
     text(ctx, `${score}`, 377, 60, 60, INK, 'center', 900);
-    text(ctx, 'очков', 377, 103, 22, INK, 'center', 700);
+    text(ctx, 'ұпай', 377, 103, 22, INK, 'center', 700);
     // звёзды
     for (let i = 0; i < 3; i++) {
       drawStar(ctx, 300 + i * 78, 160, 26, score >= STAR_THRESHOLDS[i]);
@@ -263,9 +263,9 @@ export class HudBoard {
       ctx.restore();
     }
     if (hint) {
-      sticker(ctx, 14, 210, 478, 170, '#fff8e7', 22, 7);
-      text(ctx, 'ПОДСКАЗКА', 40, 240, 22, '#ff5a3c', 'left', 900);
-      wrapText(ctx, hint, 40, 278, 430, 34, 30);
+      sticker(ctx, 14, 210, 478, 310, '#fff8e7', 22, 7);
+      text(ctx, 'КЕҢЕС', 40, 240, 22, '#ff5a3c', 'left', 900);
+      wrapText(ctx, hint, 40, 276, 430, 33, 28);
     }
     text(ctx, `${Math.round(fps)} fps`, 120, 165, 18, 'rgba(43,29,58,0.6)', 'center', 600);
     this.panel.commit();

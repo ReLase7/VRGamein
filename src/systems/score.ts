@@ -56,7 +56,7 @@ export class Score {
   /** Сохраняет результат, возвращает место в таблице (0 — лучший) или -1. */
   saveResult(): number {
     const list = Score.load();
-    const entry: HighScore = { score: this.score, stars: this.stars, date: new Date().toLocaleDateString('ru-RU') };
+    const entry: HighScore = { score: this.score, stars: this.stars, date: new Date().toLocaleDateString('kk-KZ') };
     list.push(entry);
     list.sort((a, b) => b.score - a.score);
     const top = list.slice(0, 5);

@@ -48,7 +48,7 @@ export function makeLogo(worldW: number): THREE.Mesh {
   ctx.stroke();
 
   // надпись по дуге сверху
-  arcText(ctx, '★ ВКУСНО · БЫСТРО · ВЕСЕЛО ★', cx, cy, R - 58, -Math.PI / 2, 46, '#fff8e7');
+  arcText(ctx, '★ ДӘМДІ · ЖЫЛДАМ · КӨҢІЛДІ ★', cx, cy, R - 58, -Math.PI / 2, 46, '#fff8e7');
 
   // вилка и ложка крест-накрест за колпаком
   drawFork(ctx, cx - 70, cy - 10, -0.45);

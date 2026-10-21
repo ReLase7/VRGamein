@@ -25,21 +25,21 @@ export const INGREDIENTS: ItemKind[] = ['bun', 'patty', 'lettuce', 'tomato', 'po
 /** Эти продукты не меняют состояние — в рецепте пишутся просто по имени. */
 const STATELESS: ItemKind[] = ['bun', 'lavash', 'doner'];
 
-/** Название в винительном падеже: «возьмите булку». */
+/** Атауы табыс септігінде (казахский, винительный падеж): «тоқашты алыңыз». */
 export const KIND_ACC: Record<ItemKind, string> = {
-  bun: 'булку',
-  patty: 'котлету',
-  lettuce: 'салат',
-  tomato: 'помидор',
-  potato: 'картошку',
-  chicken: 'курицу',
-  dough: 'тесто',
-  cheese: 'сыр',
-  lavash: 'лаваш',
-  doner: 'мясо донера',
-  plate: 'тарелку',
-  knife: 'нож',
-  pin: 'скалку',
+  bun: 'тоқашты',
+  patty: 'котлетті',
+  lettuce: 'салатты',
+  tomato: 'қызанақты',
+  potato: 'картопты',
+  chicken: 'тауықты',
+  dough: 'қамырды',
+  cheese: 'ірімшікті',
+  lavash: 'лавашты',
+  doner: 'донер етін',
+  plate: 'тәрелкені',
+  knife: 'пышақты',
+  pin: 'оқтауды',
 };
 
 /** Ключ ингредиента в рецепте, например «patty:cooked». Булка всегда просто «bun». */
