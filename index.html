@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Kitchen Chaos VR</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍔</text></svg>" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #8fd3ff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+      canvas { display: block; }
+      #overlay {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: rgba(30, 20, 60, 0.55); z-index: 10; padding: 16px; box-sizing: border-box;
+      }
+      #overlay.hidden { display: none; }
+      .card {
+        background: #fff8e7; border: 6px solid #2b1d3a; border-radius: 28px; padding: 28px 32px;
+        max-width: 560px; width: 100%; box-shadow: 0 10px 0 #2b1d3a; transform: rotate(-1deg); color: #2b1d3a;
+      }
+      .card h1 { margin: 0 0 4px; font-size: 40px; line-height: 1.05; }
+      .card h1 span { color: #ff5a3c; }
+      .card p { margin: 6px 0 14px; font-size: 16px; }
+      .card ul { margin: 0 0 18px; padding-left: 20px; font-size: 15px; line-height: 1.55; }
+      .card kbd { background: #2b1d3a; color: #fff; border-radius: 6px; padding: 1px 7px; font-size: 13px; }
+      #playDesktop {
+        font: inherit; font-size: 20px; font-weight: 800; color: #fff; background: #ff5a3c;
+        border: 4px solid #2b1d3a; border-radius: 16px; padding: 12px 22px; cursor: pointer; box-shadow: 0 5px 0 #2b1d3a;
+      }
+      #playDesktop:active { transform: translateY(4px); box-shadow: 0 1px 0 #2b1d3a; }
+      #crosshair {
+        position: fixed; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+        border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px #2b1d3a; pointer-events: none; z-index: 5;
+      }
+      #crosshair.hidden { display: none; }
+      #stats { position: fixed; left: 8px; top: 8px; color: #fff; font: 12px monospace; text-shadow: 0 1px 2px #000; z-index: 5; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <div class="card">
+        <h1>Kitchen <span>Chaos</span> VR</h1>
+        <p>Принимайте заказы, режьте, жарьте и выдавайте блюда, пока не вышло время!</p>
+        <ul>
+          <li><b>Quest:</b> нажмите <b>ENTER VR</b> внизу. Grip — взять/бросить, курок над доской — резать, левый стик — телепорт, правый — поворот, <b>B/Y</b> — пауза.</li>
+          <li><b>ПК:</b> <kbd>WASD</kbd> ходить, мышь — смотреть, <kbd>ЛКМ</kbd> взять/положить, <kbd>ПКМ</kbd> или <kbd>Q</kbd> бросить, держать <kbd>E</kbd> над доской — резать, <kbd>Esc</kbd> пауза.</li>
+        </ul>
+        <button id="playDesktop">Играть на ПК</button>
+      </div>
+    </div>
+    <div id="crosshair" class="hidden"></div>
+    <div id="stats"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
