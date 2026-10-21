@@ -32,6 +32,26 @@
         border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px #2b1d3a; pointer-events: none; z-index: 5;
       }
       #crosshair.hidden { display: none; }
+      .net { margin-top: 18px; padding-top: 14px; border-top: 3px dashed #e4d3b0; }
+      .net h2 { margin: 0 0 8px; font-size: 18px; }
+      .net .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      #roomCode {
+        font: inherit; font-size: 22px; font-weight: 800; width: 120px; letter-spacing: 6px; text-align: center;
+        border: 4px solid #2b1d3a; border-radius: 12px; padding: 6px 8px; background: #fff;
+      }
+      .btn2 {
+        font: inherit; font-size: 15px; font-weight: 800; color: #2b1d3a; background: #7fd6ff;
+        border: 4px solid #2b1d3a; border-radius: 12px; padding: 8px 12px; cursor: pointer; box-shadow: 0 4px 0 #2b1d3a;
+      }
+      .btn2.yellow { background: #ffd23f; }
+      .btn2:active { transform: translateY(3px); box-shadow: 0 1px 0 #2b1d3a; }
+      #notice { margin-top: 8px; font-size: 14px; font-weight: 700; color: #c0281e; min-height: 18px; }
+      #specbar {
+        position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: flex; gap: 10px; align-items: center;
+        background: #fff8e7; border: 4px solid #2b1d3a; border-radius: 16px; padding: 8px 12px; box-shadow: 0 5px 0 #2b1d3a;
+        color: #2b1d3a; font-weight: 800; font-size: 15px; max-width: calc(100vw - 32px); box-sizing: border-box; flex-wrap: wrap; justify-content: center;
+      }
+      #specbar.hidden { display: none; }
       #stats { position: fixed; left: 8px; top: 8px; color: #fff; font: 12px monospace; text-shadow: 0 1px 2px #000; z-index: 5; }
     </style>
   </head>
@@ -45,9 +65,23 @@
           <li><b>ДК:</b> <kbd>WASD</kbd> — жүру, тышқан — қарау, <kbd>Тышқанның сол батырмасы</kbd> — алу/қою, <kbd>оң батырмасы</kbd> немесе <kbd>Q</kbd> — лақтыру, пышақты (қамырға — оқтауды) алып, тақтайға бағыттап <kbd>E</kbd> басып тұру — турау, <kbd>Esc</kbd> — үзіліс.</li>
         </ul>
         <button id="playDesktop">ДК-да ойнау</button>
+        <div class="net">
+          <h2>Бірге ойнау / көру</h2>
+          <div class="row">
+            <input id="roomCode" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off" aria-label="Бөлме коды" />
+            <button class="btn2 yellow" id="watchBtn">👀 Көрермен</button>
+            <button class="btn2" id="joinBtn">🎮 Ойыншы</button>
+          </div>
+          <div id="notice"></div>
+        </div>
       </div>
     </div>
     <div id="crosshair" class="hidden"></div>
+    <div id="specbar" class="hidden">
+      <span id="specInfo">Көрермен</span>
+      <button class="btn2 yellow" id="specCam">🎥 Камера</button>
+      <button class="btn2" id="specLeave">Шығу</button>
+    </div>
     <div id="stats"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

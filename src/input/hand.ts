@@ -14,6 +14,14 @@ export class Hand {
   readonly ray = new THREE.Ray();
   held: Item | null = null;
   hover: Item | null = null;
+  /** ПК: где держится предмет (точка перед камерой). */
+  readonly holdPos = new THREE.Vector3();
+  /** ПК: куда смотрит прицел на столе/полу (для «положить»). */
+  aimPoint: THREE.Vector3 | null = null;
+  /** ПК: станция под прицелом (доска, вертел) — для нарезки клавишей E. */
+  aimBox: THREE.Box3 | null = null;
+  /** Чья это рука: 0 — хост (этот компьютер/шлем), 1 — второй игрок по сети. */
+  player = 0;
 
   /** Нажали «взять» в этом кадре. */
   grab = false;

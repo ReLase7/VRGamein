@@ -79,6 +79,12 @@ export class ItemWorld {
     if (i >= 0) this.items.splice(i, 1);
   }
 
+  /** Убрать вообще всё, включая ножи и скалки (у второго игрока кухня — зеркало хоста). */
+  removeEverything(): void {
+    for (const it of [...this.items]) this.remove(it);
+    for (const s of this.kitchen.slots) s.occupant = null;
+  }
+
   clearAll(): void {
     for (const it of [...this.items]) if (!isTool(it)) this.remove(it);
     for (const s of this.kitchen.slots) if (s.occupant && !isTool(s.occupant)) s.occupant = null;

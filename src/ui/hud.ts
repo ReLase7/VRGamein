@@ -318,6 +318,12 @@ export interface MenuSpec {
   subtitle?: string;
   lines?: string[];
   stars?: number;
+  /** Крупная надпись (например, код комнаты). */
+  big?: string;
+  /** Кнопки сеткой в несколько столбцов (клавиатура для кода). */
+  columns?: number;
+  /** Кнопки под сеткой, во всю ширину. */
+  footer?: MenuButton[];
   buttons: MenuButton[];
 }
 
@@ -377,23 +383,47 @@ export class MenuPanel {
       for (let i = 0; i < 3; i++) drawStar(ctx, W / 2 + (i - 1) * 130, y + 50, 52, i < spec.stars);
       y += 130;
     }
+    if (spec.big) {
+      text(ctx, spec.big, W / 2, y + 50, 120, '#ff5a3c', 'center', 900, W - 120);
+      y += 120;
+    }
     for (const l of spec.lines ?? []) {
       text(ctx, l, W / 2, y, 34, INK, 'center', 700, W - 140);
       y += 48;
     }
     y += 20;
     this.rects = [];
-    const bh = 92;
-    const bw = 560;
-    const remaining = 860 - y;
-    const gap = Math.min(24, Math.max(8, (remaining - spec.buttons.length * bh) / Math.max(1, spec.buttons.length)));
-    for (const b of spec.buttons) {
-      const x = (W - bw) / 2;
+    const button = (b: MenuButton, x: number, by: number, bw: number, bh: number, size: number): void => {
       const hovered = this.hover === b.id;
-      sticker(ctx, x, y, bw, bh, hovered ? '#ffd23f' : (b.color ?? '#7fd6ff'), 30, 9);
-      text(ctx, b.label, W / 2, y + bh / 2, 42, INK, 'center', 900, bw - 40);
-      this.rects.push({ id: b.id, x, y, w: bw, h: bh });
-      y += bh + gap;
+      sticker(ctx, x, by, bw, bh, hovered ? '#ffd23f' : (b.color ?? '#7fd6ff'), 26, 9);
+      text(ctx, b.label, x + bw / 2, by + bh / 2, size, INK, 'center', 900, bw - 30);
+      this.rects.push({ id: b.id, x, y: by, w: bw, h: bh });
+    };
+    if (spec.columns) {
+      // сетка (цифровая клавиатура)
+      const cols = spec.columns;
+      const gap = 14;
+      const gw = 520;
+      const bw = (gw - gap * (cols - 1)) / cols;
+      const bh = 74;
+      spec.buttons.forEach((b, i) => {
+        const x = (W - gw) / 2 + (i % cols) * (bw + gap);
+        button(b, x, y + Math.floor(i / cols) * (bh + gap), bw, bh, 46);
+      });
+      y += Math.ceil(spec.buttons.length / cols) * (bh + gap) + 6;
+      for (const b of spec.footer ?? []) {
+        button(b, (W - gw) / 2, y, gw, 70, 38);
+        y += 70 + gap;
+      }
+    } else {
+      const bh = 92;
+      const bw = 560;
+      const remaining = 860 - y;
+      const gap = Math.min(24, Math.max(8, (remaining - spec.buttons.length * bh) / Math.max(1, spec.buttons.length)));
+      for (const b of spec.buttons) {
+        button(b, (W - bw) / 2, y, bw, bh, 42);
+        y += bh + gap;
+      }
     }
     this.panel.commit();
   }

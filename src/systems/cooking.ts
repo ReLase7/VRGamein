@@ -51,6 +51,13 @@ export class Cooking {
   private spitProgress = 0;
   private soundCenter: THREE.Vector3;
   chopsDone = 0;
+  /** Что видно на станциях — по сети это повторяют у второго игрока и зрителей. */
+  readonly visual = { burners: [false, false], fry: false, oven: false, sizzle: 0 };
+
+  /** Все полоски прогресса (для передачи по сети). */
+  get bars(): ProgressBar[] {
+    return [...this.boardBars, this.spitBar, ...this.heat.map((h) => h.bar)];
+  }
 
   constructor(
     scene: THREE.Scene,
@@ -68,13 +75,13 @@ export class Cooking {
   }
 
   /** aimBox — коробка станции под прицелом мыши (на ПК). */
-  update(dt: number, hands: Hand[], camPos: THREE.Vector3, aimBox: THREE.Box3 | null): void {
+  update(dt: number, hands: Hand[], camPos: THREE.Vector3): void {
     this.strokeCooldown -= dt;
     this.fxTimer += dt;
     const puffNow = this.fxTimer > 0.12;
     if (puffNow) this.fxTimer = 0;
-    this.kitchen.boards.forEach((slot, i) => this.updateBoard(dt, slot, this.kitchen.boardBoxes[i], this.boardBars[i], hands, camPos, aimBox));
-    this.updateSpit(dt, hands, camPos, aimBox);
+    this.kitchen.boards.forEach((slot, i) => this.updateBoard(dt, slot, this.kitchen.boardBoxes[i], this.boardBars[i], hands, camPos));
+    this.updateSpit(dt, hands, camPos);
     this.updateHeat(dt, camPos, puffNow);
   }
 
@@ -83,9 +90,9 @@ export class Cooking {
    * Ножом — удары сверху вниз, скалкой — катать туда-сюда; или просто держать курок/E.
    * Возвращает прибавку прогресса.
    */
-  private work(dt: number, h: Hand, box: THREE.Box3, aimBox: THREE.Box3 | null, holdTime: number, tool: 'knife' | 'pin'): number {
+  private work(dt: number, h: Hand, box: THREE.Box3, holdTime: number, tool: 'knife' | 'pin'): number {
     if (h.held?.kind !== tool) return 0;
-    const near = h.isVR ? box.containsPoint(h.pos) : aimBox === box;
+    const near = h.isVR ? box.containsPoint(h.pos) : h.aimBox === box;
     if (!near) return 0;
     if (h.isVR && tool === 'knife' && h.vel.y < -0.7 && this.strokeCooldown <= 0) {
       this.strokeCooldown = 0.18;
@@ -96,7 +103,7 @@ export class Cooking {
     return 0;
   }
 
-  private updateBoard(dt: number, slot: Slot, box: THREE.Box3, bar: ProgressBar, hands: Hand[], camPos: THREE.Vector3, aimBox: THREE.Box3 | null): void {
+  private updateBoard(dt: number, slot: Slot, box: THREE.Box3, bar: ProgressBar, hands: Hand[], camPos: THREE.Vector3): void {
     const item = slot.occupant;
     if (!item || !item.choppable) {
       bar.hide();
@@ -104,7 +111,7 @@ export class Cooking {
     }
     let worked = false;
     for (const h of hands) {
-      const add = this.work(dt, h, box, aimBox, CHOP_HOLD_TIME, item.kind === 'dough' ? 'pin' : 'knife');
+      const add = this.work(dt, h, box, CHOP_HOLD_TIME, item.kind === 'dough' ? 'pin' : 'knife');
       if (add <= 0) continue;
       worked = true;
       item.chop += add;
@@ -130,7 +137,7 @@ export class Cooking {
     else bar.hide();
   }
 
-  private updateSpit(dt: number, hands: Hand[], camPos: THREE.Vector3, aimBox: THREE.Box3 | null): void {
+  private updateSpit(dt: number, hands: Hand[], camPos: THREE.Vector3): void {
     const sp = this.kitchen.spit;
     sp.meat.rotation.y += dt * 0.7;
     if (sp.tray.occupant) {
@@ -138,7 +145,7 @@ export class Cooking {
       return;
     }
     for (const h of hands) {
-      const add = this.work(dt, h, sp.box, aimBox, SPIT_HOLD_TIME, 'knife');
+      const add = this.work(dt, h, sp.box, SPIT_HOLD_TIME, 'knife');
       if (add <= 0) continue;
       this.spitProgress += add;
       this.holdTick += add >= CHOP_PER_STROKE ? 1 : dt;
@@ -166,7 +173,7 @@ export class Cooking {
     let active = 0;
     let fryerActive = false;
     let ovenActive = false;
-    k.pans.forEach((slot, i) => k.burners[i].material.color.setHex(slot.occupant ? PALETTE.burner : 0x2a2a38));
+    k.pans.forEach((slot, i) => (this.visual.burners[i] = !!slot.occupant));
 
     for (const st of this.heat) {
       const { slot, bar } = st;
@@ -219,13 +226,26 @@ export class Cooking {
       }
     }
     // масло во фритюре «кипит», печь светится
+    this.visual.fry = fryerActive;
+    this.visual.oven = ovenActive;
+    this.visual.sizzle = Math.min(1, active * 0.45);
+    Cooking.applyVisual(k, this.visual, this.sfx, this.soundCenter);
+  }
+
+  /** Показать состояние станций (горелки, масло, печь, шипение). */
+  static applyVisual(k: Kitchen, v: Cooking['visual'], sfx: Sfx, soundAt?: THREE.Vector3): void {
     const t = performance.now() / 1000;
-    k.oil.material.color.setHex(fryerActive ? 0xffc23d : PALETTE.oil);
-    k.ovenGlow.material.color.setHex(ovenActive ? (Math.sin(t * 6) > 0 ? 0xff7a2e : 0xff9a3e) : 0x3a2b3e);
-    this.sfx.setSizzle(Math.min(1, active * 0.45), this.soundCenter);
+    k.pans.forEach((_, i) => k.burners[i].material.color.setHex(v.burners[i] ? PALETTE.burner : 0x2a2a38));
+    k.oil.material.color.setHex(v.fry ? 0xffc23d : PALETTE.oil);
+    k.ovenGlow.material.color.setHex(v.oven ? (Math.sin(t * 6) > 0 ? 0xff7a2e : 0xff9a3e) : 0x3a2b3e);
+    sfx.setSizzle(v.sizzle, soundAt ?? k.pans[0].pos.clone().lerp(k.fryers[0].pos, 0.5));
   }
 
   reset(): void {
+    this.visual.burners = [false, false];
+    this.visual.fry = false;
+    this.visual.oven = false;
+    this.visual.sizzle = 0;
     for (const b of this.boardBars) b.hide();
     this.spitBar.hide();
     this.spitProgress = 0;

@@ -5,6 +5,8 @@ export class ProgressBar {
   readonly group = new THREE.Group();
   private fill: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly w = 0.2;
+  value = 0;
+  color = 0;
 
   constructor() {
     const h = 0.035;
@@ -19,6 +21,8 @@ export class ProgressBar {
 
   set(value: number, color: number, at: THREE.Vector3, camPos: THREE.Vector3): void {
     this.group.visible = true;
+    this.value = value;
+    this.color = color;
     this.fill.scale.x = Math.max(0.001, Math.min(1, value));
     this.fill.material.color.setHex(color);
     this.group.position.copy(at);
