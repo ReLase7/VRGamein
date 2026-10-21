@@ -96,6 +96,8 @@ export interface ModelOptions {
   outline?: number;
   /** Взять только узел с таким именем (например «bun-top» из бургера). */
   node?: string;
+  /** Какой по счёту узел с этим именем взять (0 — первый). */
+  nodeIndex?: number;
   /** Поставить на пол (низ модели в y=0) и отцентровать по x/z. */
   center?: boolean;
   /** Растянуть по осям после масштаба (например, сплющить по высоте). */
@@ -111,7 +113,9 @@ export function model(name: ModelName, opts: ModelOptions = {}): THREE.Group {
   if (!src) return out;
   let part: THREE.Object3D = src;
   if (opts.node) {
-    const n = src.getObjectByName(opts.node);
+    // GLTFLoader делает повторяющиеся имена уникальными: «fries», «fries_1», …
+    const idx = opts.nodeIndex ?? 0;
+    const n = src.getObjectsByProperty('name', opts.node)[idx] ?? src.getObjectByName(`${opts.node}_${idx}`);
     if (!n) return out;
     part = n;
   }

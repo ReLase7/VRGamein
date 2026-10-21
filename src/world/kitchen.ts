@@ -237,7 +237,8 @@ export function buildKitchen(): Kitchen {
   b.box(0.5, 0.14, 0.5, PALETTE.steel, fryX, T + 0.07, fryZ, 0, true);
   b.box(0.5, 0.2, 0.06, PALETTE.steelDark, fryX, T + 0.1, fryZ - 0.25, 0, true);
   const oil = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.01, 0.4), toonUnique(PALETTE.oil));
-  oil.position.set(fryX, T + 0.135, fryZ + 0.02);
+  // масло чуть выше верха корпуса, чтобы не мерцало
+  oil.position.set(fryX, T + 0.147, fryZ + 0.02);
   root.add(oil);
   const fryers: Slot[] = [];
   for (const dx of [-0.11, 0.11]) {
@@ -393,11 +394,14 @@ export function buildKitchen(): Kitchen {
   const oven = new Slot('oven', new THREE.Vector3(ovenX - 0.02, T + 0.05, ovenZ));
   slots.push(oven);
   surfaces.push({ minX: ovenX - od / 2, maxX: ovenX + od / 2, minZ: ovenZ - ow / 2, maxZ: ovenZ + ow / 2, top: T + oh });
+  // дно печи: брошенное внутрь ложится на него, а не проваливается
+  surfaces.push({ minX: ovenX - od / 2, maxX: ovenX + od / 2, minZ: ovenZ - ow / 2, maxZ: ovenZ + ow / 2, top: T + 0.05 });
   addSign('Печь', 0.26, 1.19, T - 0.15, ovenZ, -Math.PI / 2, '#ffb3a8');
   // стенки печи твёрдые, спереди — открытый проём
   block(ovenX - od / 2, ovenX + od / 2, ovenZ - ow / 2, ovenZ - ow / 2 + 0.05, T, T + oh);
   block(ovenX - od / 2, ovenX + od / 2, ovenZ + ow / 2 - 0.05, ovenZ + ow / 2, T, T + oh);
   block(ovenX + od / 2 - 0.05, ovenX + od / 2, ovenZ - ow / 2, ovenZ + ow / 2, T, T + oh);
+  block(ovenX - od / 2, ovenX + od / 2, ovenZ - ow / 2, ovenZ + ow / 2, T, T + 0.05); // дно
 
   // ---------- Мусорка (в правом дальнем углу) ----------
   const trashPos = new THREE.Vector3(1.5, 0, ROOM.maxZ - 0.3);

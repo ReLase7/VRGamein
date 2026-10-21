@@ -220,7 +220,6 @@ export class Cooking {
     }
     // масло во фритюре «кипит», печь светится
     const t = performance.now() / 1000;
-    k.oil.position.y = k.fryers[0].pos.y + 0.025 + (fryerActive ? Math.sin(t * 20) * 0.002 : 0);
     k.oil.material.color.setHex(fryerActive ? 0xffc23d : PALETTE.oil);
     k.ovenGlow.material.color.setHex(ovenActive ? (Math.sin(t * 6) > 0 ? 0xff7a2e : 0xff9a3e) : 0x3a2b3e);
     this.sfx.setSizzle(Math.min(1, active * 0.45), this.soundCenter);

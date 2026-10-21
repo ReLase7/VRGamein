@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PALETTE, toonMesh, toonUnique } from '../style/toon';
+import { PALETTE, toon, toonMesh, toonUnique } from '../style/toon';
 import { hasModel, model, type ModelName, type ModelOptions } from '../style/models';
 import type { Slot } from '../world/slots';
 
@@ -343,32 +343,27 @@ function kenneyVisual(item: Item, g: THREE.Group, own: Own): boolean {
         item.radius = 0.065;
         return true;
       }
-      if (need('celery-stick')) {
-        // брусочки: стебли сельдерея, перекрашенные в цвет картошки
-        const col = s === 'burnt' ? 0x3a2e30 : 0xfff0a0;
-        for (let i = 0; i < 6; i++) {
-          const st = M('celery-stick', { size: 0.016, material: tint(col) });
-          st.rotation.set(Math.PI / 2, 0, (i - 2.5) * 0.35);
-          st.position.set((i % 3 - 1) * 0.02, 0.008 + Math.floor(i / 3) * 0.012, -0.04);
-          g.add(st);
-        }
-        item.height = 0.03;
-        item.radius = 0.06;
-        return true;
-      }
+      // нарезанная и сгоревшая картошка — свои брусочки (у модели фри внутри часть стаканчика)
       return false;
     case 'chicken': {
-      if (!need('turkey')) return false;
-      // сырая курица светлее: текстура жареной индейки + розовая подсветка
-      const raw = (m: THREE.MeshToonMaterial): THREE.Material => {
-        const c = tint(0xffd0c8)(m) as THREE.MeshToonMaterial;
-        c.emissive.setHex(0x8a4a44);
-        c.userData.baseEmissive = 0x8a4a44;
-        return c;
-      };
-      g.add(M('turkey', { size: 0.12, material: s === 'raw' ? raw : s === 'burnt' ? burnt : own }));
-      item.height = 0.05;
-      item.radius = 0.07;
+      // куриная ножка: мясо (яйцо Kenney, перекрашенное) + косточка
+      if (!need('egg')) return false;
+      const meat = s === 'raw' ? 0xffc0b4 : s === 'burnt' ? 0x3a2e30 : 0xe0883a;
+      const leg = M('egg', { size: 0.07, stretch: [1, 1, 1.25], material: tint(meat) });
+      leg.rotation.z = Math.PI / 2;
+      leg.position.set(0.035, 0.035, 0);
+      g.add(leg);
+      const boneMat = own(toon(PALETTE.bone));
+      const bone = toonMesh(new THREE.CylinderGeometry(0.009, 0.009, 0.06, 8).rotateZ(Math.PI / 2), boneMat, 0.004);
+      bone.position.set(0.06, 0.035, 0);
+      g.add(bone);
+      for (const dz of [-0.011, 0.011]) {
+        const knob = toonMesh(new THREE.SphereGeometry(0.013, 8, 6), boneMat, 0.004);
+        knob.position.set(0.093, 0.035, dz);
+        g.add(knob);
+      }
+      item.height = 0.07;
+      item.radius = 0.08;
       return true;
     }
     case 'dough':
@@ -558,7 +553,7 @@ function buildVisual(item: Item, g: THREE.Group, mat: Mat): void {
         const stick = mat(stickColor);
         const base = s === 'cooked' ? 0.035 : 0.006;
         for (let i = 0; i < 9; i++) {
-          const st = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.085), stick);
+          const st = toonMesh(new THREE.BoxGeometry(0.014, 0.014, 0.085), stick, 0.003);
           st.position.set(((i % 3) - 1) * 0.022, base + Math.floor(i / 3) * 0.011, ((i * 7) % 5) * 0.006 - 0.012);
           st.rotation.y = ((i * 37) % 11) * 0.06 - 0.3;
           if (s === 'cooked') st.rotation.x = -0.5 + (i % 3) * 0.25;
