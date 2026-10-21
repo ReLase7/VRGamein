@@ -2,10 +2,8 @@ import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
 import { Hand } from '../input/hand';
 import { PLAY_AREA } from '../world/kitchen';
-import { PALETTE } from '../style/toon';
 
 interface Ctrl {
-  index: number;
   target: THREE.XRTargetRaySpace;
   grip: THREE.XRGripSpace;
   source: XRInputSource | null;
@@ -14,20 +12,20 @@ interface Ctrl {
   prevButtons: boolean[];
 }
 
-/** VR: контроллеры, захват по grip, телепорт левым стиком, поворот рывками правым. */
+const WALK_SPEED = 1.6; // м/с
+const DEADZONE = 0.15;
+
+/** VR: контроллеры, захват по grip, ходьба левым стиком, поворот рывками правым. */
 export class VRControls {
   readonly left = new Hand('left', true);
   readonly right = new Hand('right', true);
   private ctrls: Ctrl[] = [];
-  private teleportArc: THREE.Line;
-  private teleportMarker: THREE.Mesh;
-  private teleportTarget: THREE.Vector3 | null = null;
-  private teleportActive = false;
   private turnReady = true;
   snapAngle = 45;
   uiVisible = false;
   onPause: () => void = () => {};
-  onTeleport: () => void = () => {};
+  /** Нажата A/X — «главная» кнопка меню. */
+  onPrimary: () => void = () => {};
 
   constructor(
     renderer: THREE.WebGLRenderer,
@@ -44,11 +42,10 @@ export class VRControls {
       grip.add(palm);
       const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
       const rayLine = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
-      rayLine.scale.z = 2;
       rayLine.visible = false;
       target.add(rayLine);
       rig.add(target, grip);
-      const c: Ctrl = { index: i, target, grip, source: null, hand: null, rayLine, prevButtons: [] };
+      const c: Ctrl = { target, grip, source: null, hand: null, rayLine, prevButtons: [] };
       target.addEventListener('connected', (e) => {
         const src = (e as unknown as { data: XRInputSource }).data;
         c.source = src;
@@ -68,27 +65,22 @@ export class VRControls {
       });
       this.ctrls.push(c);
     }
-
-    // дуга телепорта
-    const arcGeo = new THREE.BufferGeometry().setFromPoints(new Array(30).fill(0).map(() => new THREE.Vector3()));
-    this.teleportArc = new THREE.Line(arcGeo, new THREE.LineBasicMaterial({ color: 0x7fd6ff }));
-    this.teleportArc.frustumCulled = false;
-    this.teleportArc.visible = false;
-    const ring = new THREE.RingGeometry(0.16, 0.22, 24);
-    ring.rotateX(-Math.PI / 2);
-    this.teleportMarker = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: PALETTE.window }));
-    this.teleportMarker.visible = false;
-  }
-
-  get extras(): THREE.Object3D[] {
-    return [this.teleportArc, this.teleportMarker];
   }
 
   get hands(): Hand[] {
     return [this.left, this.right];
   }
 
-  update(time: number): void {
+  /** Показать луч руки длиной len (null — спрятать). В меню луч виден всегда. */
+  setRay(hand: Hand, len: number | null): void {
+    const c = this.ctrls.find((x) => x.hand === hand);
+    if (!c) return;
+    if (this.uiVisible) len = len ?? 2;
+    c.rayLine.visible = len !== null;
+    if (len !== null) c.rayLine.scale.z = len;
+  }
+
+  update(dt: number, time: number): void {
     this.left.resetEdges();
     this.right.resetEdges();
     let leftStick = new THREE.Vector2();
@@ -107,7 +99,6 @@ export class VRControls {
       const q = new THREE.Quaternion();
       c.target.getWorldQuaternion(q);
       h.ray.set(origin, new THREE.Vector3(0, 0, -1).applyQuaternion(q));
-      c.rayLine.visible = this.uiVisible;
 
       const gp = c.source.gamepad;
       if (!gp) continue;
@@ -119,6 +110,7 @@ export class VRControls {
       if (!now(1) && was(1)) h.release = true;
       h.use = now(0);
       if (now(0) && !was(0)) h.click = true;
+      if (now(4) && !was(4)) this.onPrimary();
       if (now(5) && !was(5)) this.onPause();
       c.prevButtons = pressed;
 
@@ -127,61 +119,32 @@ export class VRControls {
       else rightStick = ax;
     }
 
-    this.updateTeleport(leftStick);
+    this.updateWalk(leftStick, dt);
     this.updateTurn(rightStick);
   }
 
-  private updateTeleport(stick: THREE.Vector2): void {
-    const wantArc = stick.y < -0.6 && !this.uiVisible;
-    if (wantArc) {
-      this.teleportActive = true;
-      const lc = this.ctrls.find((c) => c.hand === this.left);
-      if (!lc) return;
-      const origin = new THREE.Vector3();
-      lc.target.getWorldPosition(origin);
-      const q = new THREE.Quaternion();
-      lc.target.getWorldQuaternion(q);
-      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
-      const v = dir.multiplyScalar(5);
-      const g = -9.8;
-      const pts: THREE.Vector3[] = [];
-      let hit: THREE.Vector3 | null = null;
-      const p = origin.clone();
-      const step = 0.04;
-      for (let i = 0; i < 30; i++) {
-        pts.push(p.clone());
-        if (hit) continue;
-        const next = p.clone().addScaledVector(v, step);
-        v.y += g * step;
-        if (next.y <= 0) {
-          const t = p.y / (p.y - next.y);
-          hit = p.clone().lerp(next, t);
-          hit.y = 0;
-          p.copy(hit);
-        } else p.copy(next);
-      }
-      const arr = this.teleportArc.geometry.getAttribute('position') as THREE.BufferAttribute;
-      pts.forEach((pt, i) => arr.setXYZ(i, pt.x, pt.y, pt.z));
-      arr.needsUpdate = true;
-      this.teleportArc.visible = true;
-      const valid = hit && hit.x > PLAY_AREA.minX && hit.x < PLAY_AREA.maxX && hit.z > PLAY_AREA.minZ && hit.z < PLAY_AREA.maxZ;
-      (this.teleportArc.material as THREE.LineBasicMaterial).color.setHex(valid ? 0x7fd6ff : 0xff5a3c);
-      this.teleportTarget = valid && hit ? hit : null;
-      this.teleportMarker.visible = !!this.teleportTarget;
-      if (this.teleportTarget) this.teleportMarker.position.copy(this.teleportTarget).setY(0.01);
-    } else if (this.teleportActive) {
-      this.teleportActive = false;
-      this.teleportArc.visible = false;
-      this.teleportMarker.visible = false;
-      if (this.teleportTarget) {
-        const head = new THREE.Vector3();
-        this.camera.getWorldPosition(head);
-        this.rig.position.x += this.teleportTarget.x - head.x;
-        this.rig.position.z += this.teleportTarget.z - head.z;
-        this.onTeleport();
-      }
-      this.teleportTarget = null;
-    }
+  /** Плавная ходьба туда, куда смотрит голова. */
+  private updateWalk(stick: THREE.Vector2, dt: number): void {
+    const len = stick.length();
+    if (len < DEADZONE) return;
+    const k = Math.min(1, (len - DEADZONE) / (1 - DEADZONE)) / len;
+    const fwd = new THREE.Vector3();
+    this.camera.getWorldDirection(fwd);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 1e-4) return;
+    fwd.normalize();
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const move = new THREE.Vector3()
+      .addScaledVector(fwd, -stick.y * k)
+      .addScaledVector(right, stick.x * k)
+      .multiplyScalar(WALK_SPEED * dt);
+    const head = new THREE.Vector3();
+    this.camera.getWorldPosition(head);
+    // не даём уйти в стойки и стены: ограничиваем положение головы
+    const nx = Math.max(PLAY_AREA.minX, Math.min(PLAY_AREA.maxX, head.x + move.x));
+    const nz = Math.max(PLAY_AREA.minZ, Math.min(PLAY_AREA.maxZ, head.z + move.z));
+    this.rig.position.x += nx - Math.max(PLAY_AREA.minX, Math.min(PLAY_AREA.maxX, head.x));
+    this.rig.position.z += nz - Math.max(PLAY_AREA.minZ, Math.min(PLAY_AREA.maxZ, head.z));
   }
 
   private updateTurn(stick: THREE.Vector2): void {

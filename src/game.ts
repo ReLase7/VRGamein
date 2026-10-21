@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildKitchen, type Kitchen } from './world/kitchen';
+import { buildKitchen, ROOM, type Kitchen } from './world/kitchen';
 import { Particles } from './world/particles';
 import { ItemWorld, type GrabTarget } from './systems/grab';
 import { Cooking } from './systems/cooking';
@@ -35,6 +35,8 @@ function loadSettings(): Settings {
     return def;
   }
 }
+
+const playingNow = (s: State): boolean => s === 'playing';
 
 export class Game {
   readonly scene = new THREE.Scene();
@@ -103,14 +105,16 @@ export class Game {
     hud.position.copy(this.kitchen.hudPos);
     this.scene.add(hud);
     this.scene.add(this.menu.mesh);
+    // меню всегда поверх всего, даже если игрок стоит вплотную к стойке или стене
+    this.menu.mesh.renderOrder = 999;
+    (this.menu.mesh.material as THREE.MeshBasicMaterial).depthTest = false;
 
     this.desktop = new DesktopControls(this.camera, renderer.domElement);
     this.desktop.onLockChange = (locked) => this.onLockChange(locked);
     this.vr = new VRControls(renderer, this.rig, this.camera);
     this.vr.snapAngle = this.settings.snapAngle;
     this.vr.onPause = () => this.togglePause();
-    this.vr.onTeleport = () => this.sfx.play('teleport');
-    for (const o of this.vr.extras) this.scene.add(o);
+    this.vr.onPrimary = () => this.pressPrimary();
 
     this.world.onPlaced = (item, slot) => {
       if (slot.type === 'serve' && item.kind === 'plate') this.serve(item);
@@ -209,9 +213,12 @@ export class Game {
     dir.y = 0;
     if (dir.lengthSq() < 1e-4) dir.set(0, 0, -1);
     dir.normalize();
-    const dist = this.inVR ? 1.0 : 1.25;
+    const dist = this.inVR ? 0.75 : 0.9;
     const m = this.menu.mesh;
     m.position.copy(head).addScaledVector(dir, dist);
+    // меню не должно уйти в стену
+    m.position.x = Math.max(ROOM.minX + 0.3, Math.min(ROOM.maxX - 0.3, m.position.x));
+    m.position.z = Math.max(ROOM.minZ + 0.3, Math.min(ROOM.maxZ - 0.3, m.position.z));
     m.position.y = Math.max(1.0, head.y - (this.inVR ? 0.1 : 0.05));
     m.lookAt(head.x, m.position.y, head.z);
   }
@@ -412,11 +419,12 @@ export class Game {
     this.time += dt;
     this.fps = this.fps * 0.95 + (1 / Math.max(dt, 1e-3)) * 0.05;
 
-    if (this.inVR) this.vr.update(this.time);
+    if (this.inVR) this.vr.update(dt, this.time);
     else this.desktop.update(dt);
     const hands = this.hands;
     const menuVisible = this.menu.mesh.visible;
     this.vr.uiVisible = menuVisible;
+    if (this.inVR && !playingNow(this.state)) for (const h of hands) this.vr.setRay(h, menuVisible ? 2 : null);
 
     // ---- меню
     if (menuVisible) {
@@ -538,7 +546,7 @@ export class Game {
   private handleHand(h: Hand, hands: Hand[]): void {
     if (h.grab && !h.held) {
       let target: GrabTarget | null;
-      if (h.isVR) target = this.world.findNear(h);
+      if (h.isVR) target = this.vrTarget(h);
       else target = this.world.findByRay(h.ray, REACH, this.raycaster);
       if (target) this.world.grab(h, target, hands);
     }
@@ -557,12 +565,35 @@ export class Game {
     }
   }
 
+  /**
+   * Что возьмёт VR-рука: предмет рядом с ладонью, а если рядом ничего нет —
+   * предмет на луче контроллера (так можно поднять еду с пола, не приседая).
+   */
+  private vrTarget(h: Hand): GrabTarget | null {
+    const near = this.world.findNear(h);
+    if (near) return { ...near, dist: 0 };
+    const far = this.world.findByRay(h.ray, 3.5, this.raycaster);
+    return far?.item ? far : null;
+  }
+
+  private pressPrimary(): void {
+    if (!this.menu.mesh.visible) return;
+    if (this.state === 'results' || this.state === 'menu') this.onMenuButton('start');
+    else if (this.state === 'paused') this.onMenuButton('resume');
+  }
+
   private updateHighlights(hands: Hand[]): void {
     const now = new Set<Item>();
     for (const h of hands) {
       if (h.held) continue;
-      const t = h.isVR ? this.world.findNear(h) : h.hover ? { item: h.hover, dist: 0 } : null;
+      const t = h.isVR ? this.vrTarget(h) : h.hover ? { item: h.hover, dist: 0 } : null;
       if (t?.item) now.add(t.item);
+    }
+    if (this.inVR) {
+      for (const h of hands) {
+        const t = !h.held ? this.vrTarget(h) : null;
+        this.vr.setRay(h, t && t.dist > 0.2 ? t.dist : null);
+      }
     }
     for (const it of this.highlighted) if (!now.has(it)) it.setHighlight(false);
     for (const it of now) it.setHighlight(true);
