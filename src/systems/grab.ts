@@ -294,7 +294,7 @@ export class ItemWorld {
           this.fx.puff(it.root.position);
           this.remove(it);
           this.ensureKnife();
-        } else if (age > 25) {
+        } else if (age > 120) {
           this.fx.puff(it.root.position);
           this.remove(it);
         }
@@ -323,6 +323,38 @@ export class ItemWorld {
     if (Math.hypot(p.x - tr.pos.x, p.z - tr.pos.z) < tr.radius && prevY >= tr.top - 0.05 && p.y < tr.top) {
       this.trash(it);
       return;
+    }
+    // мусорка сбоку — твёрдая, отскакиваем
+    const dTr = Math.hypot(p.x - tr.pos.x, p.z - tr.pos.z);
+    if (p.y < tr.top && prevY < tr.top - 0.02 && dTr < tr.radius + r) {
+      const nx = (p.x - tr.pos.x) / (dTr || 1);
+      const nz = (p.z - tr.pos.z) / (dTr || 1);
+      p.x = tr.pos.x + nx * (tr.radius + r);
+      p.z = tr.pos.z + nz * (tr.radius + r);
+      const vn = it.vel.x * nx + it.vel.z * nz;
+      if (vn < 0) {
+        it.vel.x -= 1.3 * vn * nx;
+        it.vel.z -= 1.3 * vn * nz;
+      }
+    }
+
+    // стойки и шкафы — сплошные: предмет, прилетевший сбоку, отскакивает, а не проходит внутрь
+    for (const sd of this.kitchen.solids) {
+      if (p.y >= sd.top - 0.005 || prevY >= sd.top - 0.02) continue;
+      if (p.x <= sd.minX - r || p.x >= sd.maxX + r || p.z <= sd.minZ - r || p.z >= sd.maxZ + r) continue;
+      let best = Infinity;
+      let side: string | null = null;
+      for (const o of sd.open) {
+        const pen = o === '+x' ? sd.maxX + r - p.x : o === '-x' ? p.x - (sd.minX - r) : o === '+z' ? sd.maxZ + r - p.z : p.z - (sd.minZ - r);
+        if (pen < best) {
+          best = pen;
+          side = o;
+        }
+      }
+      if (side === '+x') { p.x = sd.maxX + r; it.vel.x = Math.abs(it.vel.x) * 0.3; }
+      if (side === '-x') { p.x = sd.minX - r; it.vel.x = -Math.abs(it.vel.x) * 0.3; }
+      if (side === '+z') { p.z = sd.maxZ + r; it.vel.z = Math.abs(it.vel.z) * 0.3; }
+      if (side === '-z') { p.z = sd.minZ - r; it.vel.z = -Math.abs(it.vel.z) * 0.3; }
     }
 
     if (it.vel.y > 0) return;

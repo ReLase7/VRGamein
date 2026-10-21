@@ -16,9 +16,16 @@ export interface Spawner {
   spawnPos: THREE.Vector3;
 }
 
+/** Сплошной блок от пола до top: предметы не могут пройти сквозь него сбоку. */
+export interface Solid extends Surface {
+  /** С каких сторон блок открыт (куда выталкивать предмет). */
+  open: ('+x' | '-x' | '+z' | '-z')[];
+}
+
 export interface Kitchen {
   group: THREE.Group;
   surfaces: Surface[];
+  solids: Solid[];
   slots: Slot[];
   spawners: Spawner[];
   board: Slot;
@@ -80,30 +87,46 @@ export function buildKitchen(): Kitchen {
     { minX: -1.8, maxX: -1.2, minZ: -0.9, maxZ: 0.95, top: T }, // левая
     { minX: 1.2, maxX: 1.8, minZ: -0.9, maxZ: 0.95, top: T }, // правая
   ];
-  for (const c of counters) {
-    const cx = (c.minX + c.maxX) / 2;
-    const cz = (c.minZ + c.maxZ) / 2;
-    const w = c.maxX - c.minX;
-    const d = c.maxZ - c.minZ;
-    b.box(w - 0.04, T - 0.1, d - 0.04, PALETTE.counter, cx, (T - 0.1) / 2 + 0.06, cz, 0, true);
-    b.box(w - 0.1, 0.06, d - 0.1, PALETTE.counterDark, cx, 0.03, cz, 0, false);
-    b.box(w + 0.04, 0.06, d + 0.04, PALETTE.counterTop, cx, T - 0.03, cz, 0, true);
+  // Стойки строятся одним П-образным куском, а не тремя ящиками: так на стыках
+  // нет лишних линий обводки и ничего не торчит сквозь углы.
+  const uShape = (m: number, y0: number, h: number, color: number, outline: boolean): void => {
+    const pts: [number, number][] = [
+      [-1.8 - m, -1.5 - m],
+      [1.8 + m, -1.5 - m],
+      [1.8 + m, 0.95 + m],
+      [1.2 - m, 0.95 + m],
+      [1.2 - m, -0.9 + m],
+      [-1.2 + m, -0.9 + m],
+      [-1.2 + m, 0.95 + m],
+      [-1.8 - m, 0.95 + m],
+    ];
+    const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+    geo.rotateX(-Math.PI / 2);
+    b.add(geo, color, new THREE.Matrix4().makeTranslation(0, y0, 0), outline);
+  };
+  uShape(-0.05, 0, 0.06, PALETTE.counterDark, false); // цоколь
+  uShape(-0.02, 0.06, T - 0.12, PALETTE.counter, true); // корпус
+  uShape(0.02, T - 0.06, 0.06, PALETTE.counterTop, true); // столешница
+
+  // дверцы шкафчиков с ручками — строго в пределах своей стороны
+  for (const x of [-0.9, -0.3, 0.3, 0.9]) {
+    b.box(0.52, 0.56, 0.02, PALETTE.counterDark, x, 0.44, -0.91, 0, true);
+    b.box(0.12, 0.03, 0.03, PALETTE.steelDark, x, 0.64, -0.885, 0, false);
   }
-  // дверцы шкафчиков с ручками
-  for (let x = -1.55; x <= 1.6; x += 0.5) {
-    if (x > -1.2 && x < 1.2) {
-      b.box(0.42, 0.55, 0.02, PALETTE.counterDark, x + 0.2, 0.45, -0.875, 0, true);
-      b.box(0.12, 0.03, 0.03, PALETTE.steelDark, x + 0.2, 0.66, -0.855, 0, false);
+  for (const z of [-0.55, 0, 0.55]) {
+    for (const side of [-1, 1]) {
+      b.box(0.02, 0.56, 0.48, PALETTE.counterDark, side * 1.21, 0.44, z, 0, true);
+      b.box(0.03, 0.03, 0.12, PALETTE.steelDark, side * 1.195, 0.64, z, 0, false);
     }
-  }
-  for (let z = -0.6; z <= 0.8; z += 0.5) {
-    b.box(0.02, 0.55, 0.42, PALETTE.counterDark, -1.175, 0.45, z, 0, true);
-    b.box(0.03, 0.03, 0.12, PALETTE.steelDark, -1.155, 0.66, z, 0, false);
-    b.box(0.02, 0.55, 0.42, PALETTE.counterDark, 1.175, 0.45, z, 0, true);
-    b.box(0.03, 0.03, 0.12, PALETTE.steelDark, 1.155, 0.66, z, 0, false);
   }
 
   const surfaces: Surface[] = [...counters];
+  const solids: Solid[] = [
+    { ...counters[0], maxZ: counters[0].maxZ + 0.02, open: ['+z'] },
+    { ...counters[1], maxX: counters[1].maxX + 0.02, maxZ: counters[1].maxZ + 0.02, open: ['+x', '+z'] },
+    { ...counters[2], minX: counters[2].minX - 0.02, maxZ: counters[2].maxZ + 0.02, open: ['-x', '+z'] },
+  ];
   const slots: Slot[] = [];
   const signs: THREE.Object3D[] = [];
   const addSign = (label: string, w: number, x: number, y: number, z: number, rotY: number, fill?: string): void => {
@@ -124,6 +147,7 @@ export function buildKitchen(): Kitchen {
     new THREE.Vector3(boardPos.x + 0.24, T + 0.3, boardPos.z + 0.18),
   );
   addSign('Доска', 0.3, boardPos.x, T + 0.3, ROOM.minZ + 0.01, 0, '#ffe08a');
+  surfaces.push({ minX: boardPos.x - 0.21, maxX: boardPos.x + 0.21, minZ: boardPos.z - 0.15, maxZ: boardPos.z + 0.15, top: T + 0.03 });
   const knifeSlot = new Slot('knife', new THREE.Vector3(-1.12, T, -1.12), 0.4);
   slots.push(knifeSlot);
 
@@ -137,6 +161,7 @@ export function buildKitchen(): Kitchen {
     knob.rotateX(Math.PI / 2);
     b.add(knob, PALETTE.steel, new THREE.Matrix4().makeTranslation(stoveX + dx, T + 0.08, -1.44), true);
   }
+  surfaces.push({ minX: stoveX - 0.475, maxX: stoveX + 0.475, minZ: -1.48, maxZ: -0.92, top: T + 0.04 });
   const pans: Slot[] = [];
   const burners: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>[] = [];
   for (const dx of [-0.22, 0.22]) {
@@ -226,6 +251,7 @@ export function buildKitchen(): Kitchen {
   b.box(0.08, 1.0, 0.08, PALETTE.bell, 1.75, T + 0.5, serveZ + 0.3, 0, true);
   b.box(0.1, 0.08, 0.7, PALETTE.bell, 1.75, T + 1.02, serveZ, 0, true);
   b.box(0.02, 0.92, 0.52, PALETTE.window, ROOM.maxX - 0.005, T + 0.5, serveZ, 0, false);
+  surfaces.push({ minX: serveX - 0.21, maxX: serveX + 0.21, minZ: serveZ - 0.21, maxZ: serveZ + 0.21, top: T + 0.02 });
   const serve = new Slot('serve', new THREE.Vector3(serveX, T + 0.02, serveZ));
   slots.push(serve);
   addSign('ВЫДАЧА', 0.4, 1.7, T + 1.2, serveZ, -Math.PI / 2, '#ffd23f');
@@ -257,6 +283,8 @@ export function buildKitchen(): Kitchen {
   // полки на задней стене с кастрюлями и банками
   b.box(1.0, 0.04, 0.22, PALETTE.wood, -1.15, 2.25, -1.48, 0, true);
   b.box(1.0, 0.04, 0.22, PALETTE.wood, 1.25, 2.25, -1.48, 0, true);
+  surfaces.push({ minX: -1.65, maxX: -0.65, minZ: -1.59, maxZ: -1.37, top: 2.27 });
+  surfaces.push({ minX: 0.75, maxX: 1.75, minZ: -1.59, maxZ: -1.37, top: 2.27 });
   const jarColors = [0xff5a3c, 0xffd23f, 0x6ccf4a, 0x7fd6ff, 0xc77dff];
   for (let i = 0; i < 5; i++) {
     const g = new THREE.CylinderGeometry(0.06, 0.06, 0.14 + (i % 2) * 0.05, 10);
@@ -299,6 +327,7 @@ export function buildKitchen(): Kitchen {
   return {
     group: root,
     surfaces,
+    solids,
     slots,
     spawners,
     board,
