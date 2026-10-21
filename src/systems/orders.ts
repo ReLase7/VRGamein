@@ -10,9 +10,14 @@ export interface Recipe {
 }
 
 export const RECIPES: Recipe[] = [
-  { id: 'salad', name: 'Салат', items: ['lettuce:chopped', 'tomato:chopped'], points: 20, time: 50, unlockAt: 0 },
-  { id: 'burger', name: 'Бургер', items: ['bun', 'patty:cooked', 'lettuce:chopped'], points: 30, time: 70, unlockAt: 0 },
-  { id: 'bigburger', name: 'Биг-бургер', items: ['bun', 'patty:cooked', 'lettuce:chopped', 'tomato:chopped'], points: 45, time: 85, unlockAt: 60 },
+  { id: 'salad', name: 'Салат', items: ['lettuce:chopped', 'tomato:chopped'], points: 20, time: 55, unlockAt: 0 },
+  { id: 'burger', name: 'Бургер', items: ['bun', 'patty:cooked', 'lettuce:chopped'], points: 30, time: 75, unlockAt: 0 },
+  { id: 'fries', name: 'Фри', items: ['potato:cooked'], points: 20, time: 55, unlockAt: 15 },
+  { id: 'chicken', name: 'Чикен', items: ['chicken:cooked', 'chicken:cooked'], points: 30, time: 75, unlockAt: 30 },
+  { id: 'doner', name: 'Донер', items: ['lavash', 'doner', 'lettuce:chopped', 'tomato:chopped'], points: 45, time: 90, unlockAt: 45 },
+  { id: 'pizza', name: 'Пицца', items: ['pizza'], points: 50, time: 95, unlockAt: 60 },
+  { id: 'combo', name: 'Чикен + фри', items: ['chicken:cooked', 'potato:cooked'], points: 35, time: 80, unlockAt: 90 },
+  { id: 'bigburger', name: 'Биг-бургер', items: ['bun', 'patty:cooked', 'lettuce:chopped', 'tomato:chopped'], points: 45, time: 90, unlockAt: 110 },
 ];
 
 export interface Order {
@@ -44,6 +49,7 @@ export class Orders {
   private spawnTimer = 0;
   private roundTime = 0;
   private spawnedCount = 0;
+  private seen = new Set<string>();
   onNew: (o: Order) => void = () => {};
   onExpired: (o: Order) => void = () => {};
 
@@ -52,6 +58,7 @@ export class Orders {
     this.spawnTimer = 2; // первый заказ почти сразу
     this.roundTime = 0;
     this.spawnedCount = 0;
+    this.seen.clear();
   }
 
   get active(): Order[] {
@@ -87,13 +94,11 @@ export class Orders {
   }
 
   private spawn(): void {
-    let recipe: Recipe;
-    if (this.spawnedCount === 0) recipe = RECIPES[0];
-    else if (this.spawnedCount === 1) recipe = RECIPES[1];
-    else {
-      const pool = RECIPES.filter((r) => r.unlockAt <= this.roundTime);
-      recipe = pool[Math.floor(Math.random() * pool.length)];
-    }
+    // Сначала по разу каждое открытое блюдо (по порядку), потом — случайно.
+    const pool = RECIPES.filter((r) => r.unlockAt <= this.roundTime);
+    const fresh = pool.find((r) => !this.seen.has(r.id));
+    const recipe = fresh ?? pool[Math.floor(Math.random() * pool.length)];
+    this.seen.add(recipe.id);
     this.spawnedCount++;
     const o: Order = { id: this.nextId++, recipe, timeLeft: recipe.time, age: 0, leaving: 0, result: null };
     this.list.push(o);

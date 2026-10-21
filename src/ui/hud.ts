@@ -71,6 +71,94 @@ export function drawIngredient(ctx: CanvasRenderingContext2D, key: string, x: nu
         ctx.fill();
       }
       break;
+    case 'potato:cooked': {
+      // фри в красном кульке
+      ctx.fillStyle = '#ffc83d';
+      for (let i = -2; i <= 2; i++) {
+        ctx.save();
+        ctx.translate(x + i * r * 0.22, y - r * 0.2);
+        ctx.rotate(i * 0.12);
+        ctx.fillRect(-r * 0.09, -r * 0.75, r * 0.18, r * 0.9);
+        ctx.strokeRect(-r * 0.09, -r * 0.75, r * 0.18, r * 0.9);
+        ctx.restore();
+      }
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.75, y - r * 0.1);
+      ctx.lineTo(x + r * 0.75, y - r * 0.1);
+      ctx.lineTo(x + r * 0.55, y + r * 0.85);
+      ctx.lineTo(x - r * 0.55, y + r * 0.85);
+      ctx.closePath();
+      ctx.fillStyle = '#e8402f';
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case 'chicken:cooked': {
+      // ножка: кость + мясо
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-0.6);
+      roundRect(ctx, r * 0.2, -r * 0.12, r * 0.75, r * 0.24, r * 0.1);
+      ctx.fillStyle = '#fff6e6';
+      ctx.fill();
+      ctx.stroke();
+      circle(r * 0.95, -r * 0.12, r * 0.16, '#fff6e6');
+      circle(r * 0.95, r * 0.12, r * 0.16, '#fff6e6');
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.15, 0, r * 0.62, r * 0.48, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#d9822b';
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'lavash':
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#f2d9a0';
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#d9b06a';
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(i * 1.6) * r * 0.5, y + Math.sin(i * 1.6) * r * 0.25, r * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 'doner':
+      for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.translate(x + (i - 1.5) * r * 0.32, y + ((i % 2) - 0.5) * r * 0.3);
+        ctx.rotate(0.4 - i * 0.25);
+        roundRect(ctx, -r * 0.45, -r * 0.13, r * 0.9, r * 0.26, r * 0.1);
+        ctx.fillStyle = i % 2 ? '#9a5427' : '#6e3616';
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      break;
+    case 'pizza': {
+      circle(x, y, r * 0.95, '#e6a24a');
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.72, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffb92e';
+      ctx.fill();
+      ctx.fillStyle = '#d8321e';
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(i * 1.26 + 0.3) * r * 0.42, y + Math.sin(i * 1.26 + 0.3) * r * 0.42, r * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.lineWidth = Math.max(2, r * 0.08);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(x - Math.cos(a) * r * 0.9, y - Math.sin(a) * r * 0.9);
+        ctx.lineTo(x + Math.cos(a) * r * 0.9, y + Math.sin(a) * r * 0.9);
+        ctx.stroke();
+      }
+      break;
+    }
     default:
       circle(x, y, r * 0.7, '#ccc');
   }

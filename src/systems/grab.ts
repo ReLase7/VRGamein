@@ -60,11 +60,10 @@ export class ItemWorld {
       item.slot.occupant = null;
       item.slot = null;
     }
-    for (const c of item.contents) c.dispose();
-    item.contents = [];
     item.mode = 'dead';
     item.root.removeFromParent();
-    item.dispose();
+    item.disposeDeep();
+    item.contents = [];
     const i = this.items.indexOf(item);
     if (i >= 0) this.items.splice(i, 1);
   }
@@ -116,7 +115,7 @@ export class ItemWorld {
       while (o && !o.userData.item) o = o.parent;
       if (!o) continue;
       let item = o.userData.item as Item;
-      if (item.mode === 'onPlate' && item.plate) item = item.plate;
+      while (item.mode === 'onPlate' && item.plate) item = item.plate;
       best = { item, dist: h.distance };
       break;
     }
@@ -186,7 +185,9 @@ export class ItemWorld {
       let bestPlate: Item | null = null;
       let bestD = 0.16;
       for (const p of this.items) {
-        if (p.kind !== 'plate' || p.mode === 'dead' || p === item) continue;
+        if (p.mode === 'dead' || p === item || p.mode === 'held') continue;
+        // тарелка принимает любую еду, раскатанное тесто — сыр и помидор
+        if (p.kind !== 'plate' && !p.acceptsTopping(item)) continue;
         const pp = p.root.getWorldPosition(this.tmp);
         const d = Math.hypot(point.x - pp.x, point.z - pp.z);
         const dy = point.y - pp.y;
@@ -239,7 +240,8 @@ export class ItemWorld {
     item.root.quaternion.identity();
     plate.contents.push(item);
     plate.root.add(item.root);
-    plate.layoutPlate();
+    if (plate.kind === 'plate') plate.layoutPlate();
+    else plate.layoutBase();
     plate.bounce();
     item.bounce();
     const i = this.items.indexOf(item);

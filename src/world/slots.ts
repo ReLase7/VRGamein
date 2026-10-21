@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Item } from '../items/item';
 
-export type SlotType = 'counter' | 'board' | 'pan' | 'serve' | 'knife';
+export type SlotType = 'counter' | 'board' | 'pan' | 'fryer' | 'oven' | 'tray' | 'serve' | 'knife';
 
 /** Точка «прилипания»: на неё можно поставить предмет. */
 export class Slot {
@@ -20,7 +20,13 @@ export class Slot {
       case 'board':
         return item.isIngredient;
       case 'pan':
-        return item.isIngredient;
+        return item.kind === 'patty';
+      case 'fryer':
+        return item.kind === 'chicken' || (item.kind === 'potato' && item.state !== 'raw');
+      case 'oven':
+        return item.kind === 'dough' && item.state !== 'raw';
+      case 'tray':
+        return item.kind === 'doner';
       case 'serve':
         return item.kind === 'plate';
       case 'knife':

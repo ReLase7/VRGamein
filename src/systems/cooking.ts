@@ -3,23 +3,53 @@ import type { Kitchen } from '../world/kitchen';
 import type { Hand } from '../input/hand';
 import type { Sfx } from '../audio/sfx';
 import type { Particles } from '../world/particles';
+import type { Slot, SlotType } from '../world/slots';
+import type { ItemKind, ItemState } from '../items/item';
+import type { ItemWorld } from './grab';
 import { ProgressBar } from '../ui/progressBar';
 import { PALETTE } from '../style/toon';
 
 const CHOP_HOLD_TIME = 1.4; // секунд удерживать курок/E
 const CHOP_PER_STROKE = 0.26; // ~4 удара ножом
-const COOK_TIME = 7; // сырая → жареная
-const BURN_TIME = 9; // жареная → сгоревшая
+const SPIT_HOLD_TIME = 1.6; // срезать порцию мяса с вертела
 
-/** Нарезка на доске, жарка и сгорание на плите. */
+interface Rule {
+  from: ItemState;
+  time: number; // секунд до готовности
+}
+
+/** Что и сколько готовится на каждой станции. После готовности — до сгорания BURN_TIME. */
+const HEAT_RULES: Partial<Record<SlotType, Partial<Record<ItemKind, Rule>>>> = {
+  pan: { patty: { from: 'raw', time: 7 } },
+  fryer: { potato: { from: 'chopped', time: 6 }, chicken: { from: 'raw', time: 8 } },
+  oven: { dough: { from: 'chopped', time: 8 } },
+};
+const BURN_TIME: Partial<Record<SlotType, number>> = { pan: 9, fryer: 9, oven: 10 };
+
+const CHOP_COLOR: Partial<Record<ItemKind, number>> = {
+  tomato: PALETTE.tomato,
+  lettuce: PALETTE.lettuce,
+  cheese: PALETTE.cheese,
+  potato: PALETTE.potatoInner,
+  dough: PALETTE.dough,
+};
+
+interface HeatStation {
+  slot: Slot;
+  bar: ProgressBar;
+  barHeight: number;
+}
+
+/** Нарезка на досках, вертел донера, жарка на плите и во фритюре, печь для пиццы. */
 export class Cooking {
-  private boardBar = new ProgressBar();
-  private panBars = [new ProgressBar(), new ProgressBar()];
+  private boardBars: ProgressBar[];
+  private spitBar = new ProgressBar();
+  private heat: HeatStation[] = [];
   private strokeCooldown = 0;
   private holdTick = 0;
   private fxTimer = 0;
-  private stoveCenter: THREE.Vector3;
-  /** Сколько было нарезано (для статистики). */
+  private spitProgress = 0;
+  private soundCenter: THREE.Vector3;
   chopsDone = 0;
 
   constructor(
@@ -27,89 +57,132 @@ export class Cooking {
     private readonly kitchen: Kitchen,
     private readonly sfx: Sfx,
     private readonly fx: Particles,
+    private readonly world: ItemWorld,
   ) {
-    scene.add(this.boardBar.group, ...this.panBars.map((b) => b.group));
-    this.stoveCenter = kitchen.pans[0].pos.clone().lerp(kitchen.pans[1].pos, 0.5);
+    this.boardBars = kitchen.boards.map(() => new ProgressBar());
+    for (const s of kitchen.pans) this.heat.push({ slot: s, bar: new ProgressBar(), barHeight: 0.25 });
+    for (const s of kitchen.fryers) this.heat.push({ slot: s, bar: new ProgressBar(), barHeight: 0.3 });
+    this.heat.push({ slot: kitchen.oven, bar: new ProgressBar(), barHeight: 0.55 });
+    scene.add(this.spitBar.group, ...this.boardBars.map((b) => b.group), ...this.heat.map((h) => h.bar.group));
+    this.soundCenter = kitchen.pans[0].pos.clone().lerp(kitchen.fryers[0].pos, 0.5);
   }
 
-  update(dt: number, hands: Hand[], camPos: THREE.Vector3, desktopAimsBoard: boolean): void {
+  /** aimBox — коробка станции под прицелом мыши (на ПК). */
+  update(dt: number, hands: Hand[], camPos: THREE.Vector3, aimBox: THREE.Box3 | null): void {
     this.strokeCooldown -= dt;
     this.fxTimer += dt;
     const puffNow = this.fxTimer > 0.12;
     if (puffNow) this.fxTimer = 0;
-    this.updateBoard(dt, hands, camPos, desktopAimsBoard);
-    this.updatePans(dt, camPos, puffNow);
+    this.kitchen.boards.forEach((slot, i) => this.updateBoard(dt, slot, this.kitchen.boardBoxes[i], this.boardBars[i], hands, camPos, aimBox));
+    this.updateSpit(dt, hands, camPos, aimBox);
+    this.updateHeat(dt, camPos, puffNow);
   }
 
-  private updateBoard(dt: number, hands: Hand[], camPos: THREE.Vector3, desktopAimsBoard: boolean): void {
-    const k = this.kitchen;
-    const item = k.board.occupant;
+  /** Работает ли рука у станции: удар ножом сверху вниз или удержание курка/E. Возвращает прибавку прогресса. */
+  private work(dt: number, h: Hand, box: THREE.Box3, aimBox: THREE.Box3 | null, holdTime: number): number {
+    const near = h.isVR ? box.containsPoint(h.pos) : aimBox === box;
+    if (!near) return 0;
+    if (h.isVR && h.held?.kind === 'knife' && h.vel.y < -0.7 && this.strokeCooldown <= 0) {
+      this.strokeCooldown = 0.18;
+      return CHOP_PER_STROKE;
+    }
+    if (h.use && (!h.held || h.held.kind === 'knife')) return dt / holdTime;
+    return 0;
+  }
+
+  private updateBoard(dt: number, slot: Slot, box: THREE.Box3, bar: ProgressBar, hands: Hand[], camPos: THREE.Vector3, aimBox: THREE.Box3 | null): void {
+    const item = slot.occupant;
     if (!item || !item.choppable) {
-      this.boardBar.hide();
+      bar.hide();
       return;
     }
-    const at = k.board.pos.clone().setY(k.board.pos.y + 0.22);
-    let chopped = false;
+    let worked = false;
     for (const h of hands) {
-      const near = h.isVR ? k.boardBox.containsPoint(h.pos) : desktopAimsBoard;
-      if (!near) continue;
-      // 1) удар ножом сверху вниз
-      if (h.isVR && h.held?.kind === 'knife' && h.vel.y < -0.7 && this.strokeCooldown <= 0) {
-        item.chop += CHOP_PER_STROKE;
-        this.strokeCooldown = 0.18;
-        this.chopFx(item.kind, h);
-        chopped = true;
-      }
-      // 2) запасной вариант: держать курок (VR) или E (ПК) над доской
-      else if (h.use && (!h.held || h.held.kind === 'knife')) {
-        item.chop += dt / CHOP_HOLD_TIME;
-        this.holdTick += dt;
-        if (this.holdTick > 0.2) {
-          this.holdTick = 0;
-          this.chopFx(item.kind, h);
-        }
-        chopped = true;
+      const add = this.work(dt, h, box, aimBox, CHOP_HOLD_TIME);
+      if (add <= 0) continue;
+      worked = true;
+      item.chop += add;
+      this.holdTick += add >= CHOP_PER_STROKE ? 1 : dt;
+      if (this.holdTick > 0.2) {
+        this.holdTick = 0;
+        this.sfx.play('chop', slot.pos);
+        this.fx.splash(slot.pos.clone().setY(slot.pos.y + 0.06), CHOP_COLOR[item.kind] ?? 0xffffff);
+        item.bounce();
+        h.pulse(0.7, 35);
       }
     }
-    if (chopped && item.chop >= 1) {
+    if (worked && item.chop >= 1) {
       item.chop = 0;
       item.setState('chopped');
       this.chopsDone++;
-      this.sfx.play('cooked', k.board.pos);
-      this.fx.splash(k.board.pos.clone().setY(k.board.pos.y + 0.05), item.kind === 'tomato' ? PALETTE.tomato : PALETTE.lettuce);
-      this.boardBar.hide();
+      this.sfx.play('cooked', slot.pos);
+      this.fx.splash(slot.pos.clone().setY(slot.pos.y + 0.05), CHOP_COLOR[item.kind] ?? 0xffffff);
+      bar.hide();
       return;
     }
-    if (item.chop > 0) this.boardBar.set(item.chop, 0x6ccf4a, at, camPos);
-    else this.boardBar.hide();
+    if (item.chop > 0) bar.set(item.chop, 0x6ccf4a, slot.pos.clone().setY(slot.pos.y + 0.22), camPos);
+    else bar.hide();
   }
 
-  private chopFx(kind: string, h: Hand): void {
-    const k = this.kitchen;
-    this.sfx.play('chop', k.board.pos);
-    this.fx.splash(k.board.pos.clone().setY(k.board.pos.y + 0.06), kind === 'tomato' ? PALETTE.tomato : PALETTE.lettuce);
-    k.board.occupant?.bounce();
-    h.pulse(0.7, 35);
-  }
-
-  private updatePans(dt: number, camPos: THREE.Vector3, puffNow: boolean): void {
-    const k = this.kitchen;
-    let sizzle = 0;
-    k.pans.forEach((slot, i) => {
-      const item = slot.occupant;
-      const bar = this.panBars[i];
-      const burner = k.burners[i];
-      const top = slot.pos.clone().setY(slot.pos.y + 0.06);
-      burner.material.color.setHex(item ? PALETTE.burner : 0x2a2a38);
-      if (!item || item.kind !== 'patty') {
-        bar.hide();
-        return;
+  private updateSpit(dt: number, hands: Hand[], camPos: THREE.Vector3, aimBox: THREE.Box3 | null): void {
+    const sp = this.kitchen.spit;
+    sp.meat.rotation.y += dt * 0.7;
+    if (sp.tray.occupant) {
+      this.spitBar.hide();
+      return;
+    }
+    for (const h of hands) {
+      const add = this.work(dt, h, sp.box, aimBox, SPIT_HOLD_TIME);
+      if (add <= 0) continue;
+      this.spitProgress += add;
+      this.holdTick += add >= CHOP_PER_STROKE ? 1 : dt;
+      if (this.holdTick > 0.2) {
+        this.holdTick = 0;
+        this.sfx.play('chop', sp.pos);
+        this.fx.splash(sp.pos.clone().add(new THREE.Vector3(0, 0.3, 0.12)), PALETTE.doner);
+        h.pulse(0.6, 30);
       }
-      const barAt = slot.pos.clone().setY(slot.pos.y + 0.25);
-      if (item.state === 'raw') {
-        sizzle += 1;
-        item.cook += dt / COOK_TIME;
-        if (puffNow && Math.random() < 0.6) this.fx.steam(top);
+    }
+    if (this.spitProgress >= 1) {
+      this.spitProgress = 0;
+      const meat = this.world.spawn('doner', sp.tray.pos);
+      meat.setState('cooked');
+      this.world.snap(meat, sp.tray);
+      this.sfx.play('cooked', sp.tray.pos);
+      this.fx.puff(sp.tray.pos.clone().setY(sp.tray.pos.y + 0.05), PALETTE.doner);
+    }
+    if (this.spitProgress > 0) this.spitBar.set(this.spitProgress, 0x6ccf4a, sp.pos.clone().add(new THREE.Vector3(0, 0.82, 0.1)), camPos);
+    else this.spitBar.hide();
+  }
+
+  private updateHeat(dt: number, camPos: THREE.Vector3, puffNow: boolean): void {
+    const k = this.kitchen;
+    let active = 0;
+    let fryerActive = false;
+    let ovenActive = false;
+    k.pans.forEach((slot, i) => k.burners[i].material.color.setHex(slot.occupant ? PALETTE.burner : 0x2a2a38));
+
+    for (const st of this.heat) {
+      const { slot, bar } = st;
+      const item = slot.occupant;
+      const rule = item ? HEAT_RULES[slot.type]?.[item.kind] : undefined;
+      if (!item || !rule) {
+        bar.hide();
+        continue;
+      }
+      const top = slot.pos.clone().setY(slot.pos.y + 0.06);
+      const barAt = slot.pos.clone().setY(slot.pos.y + st.barHeight);
+      const emit = (): void => {
+        if (slot.type === 'fryer') this.fx.spawn(top, { vel: new THREE.Vector3(0, 0.25, 0), spread: 0.15, life: 0.4, size: 0.01, color: PALETTE.oil });
+        else if (slot.type === 'oven') this.fx.steam(slot.pos.clone().add(new THREE.Vector3(-0.28, 0.3, 0)));
+        else this.fx.steam(top);
+      };
+      if (item.state === rule.from) {
+        active++;
+        if (slot.type === 'fryer') fryerActive = true;
+        if (slot.type === 'oven') ovenActive = true;
+        item.cook += dt / rule.time;
+        if (puffNow && Math.random() < 0.6) emit();
         bar.set(item.cook, 0x6ccf4a, barAt, camPos);
         if (item.cook >= 1) {
           item.setState('cooked');
@@ -117,11 +190,13 @@ export class Cooking {
           this.fx.puff(top);
         }
       } else if (item.state === 'cooked') {
-        sizzle += 1;
-        item.burn += dt / BURN_TIME;
+        active++;
+        if (slot.type === 'fryer') fryerActive = true;
+        if (slot.type === 'oven') ovenActive = true;
+        item.burn += dt / (BURN_TIME[slot.type] ?? 9);
         if (puffNow) {
           if (item.burn > 0.5) this.fx.smoke(top);
-          else if (Math.random() < 0.5) this.fx.steam(top);
+          else if (Math.random() < 0.5) emit();
         }
         if (item.burn > 0.35) {
           const blink = item.burn > 0.7 && Math.floor(performance.now() / 150) % 2 === 0;
@@ -134,15 +209,22 @@ export class Cooking {
         }
       } else {
         bar.hide();
-        if (puffNow) this.fx.smoke(top);
+        if (item.state === 'burnt' && puffNow) this.fx.smoke(top);
       }
-    });
-    this.sfx.setSizzle(Math.min(1, sizzle * 0.6), this.stoveCenter);
+    }
+    // масло во фритюре «кипит», печь светится
+    const t = performance.now() / 1000;
+    k.oil.position.y = k.fryers[0].pos.y + 0.025 + (fryerActive ? Math.sin(t * 20) * 0.002 : 0);
+    k.oil.material.color.setHex(fryerActive ? 0xffc23d : PALETTE.oil);
+    k.ovenGlow.material.color.setHex(ovenActive ? (Math.sin(t * 6) > 0 ? 0xff7a2e : 0xff9a3e) : 0x3a2b3e);
+    this.sfx.setSizzle(Math.min(1, active * 0.45), this.soundCenter);
   }
 
   reset(): void {
-    this.boardBar.hide();
-    for (const b of this.panBars) b.hide();
-    this.sfx.setSizzle(0, this.stoveCenter);
+    for (const b of this.boardBars) b.hide();
+    this.spitBar.hide();
+    this.spitProgress = 0;
+    for (const h of this.heat) h.bar.hide();
+    this.sfx.setSizzle(0, this.soundCenter);
   }
 }

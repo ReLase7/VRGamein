@@ -2,33 +2,46 @@ import * as THREE from 'three';
 import { PALETTE, toonMesh, toonUnique } from '../style/toon';
 import type { Slot } from '../world/slots';
 
-export type ItemKind = 'bun' | 'patty' | 'lettuce' | 'tomato' | 'plate' | 'knife';
+export type ItemKind =
+  | 'bun'
+  | 'patty'
+  | 'lettuce'
+  | 'tomato'
+  | 'potato'
+  | 'chicken'
+  | 'dough'
+  | 'cheese'
+  | 'lavash'
+  | 'doner'
+  | 'plate'
+  | 'knife';
 export type ItemState = 'raw' | 'chopped' | 'cooked' | 'burnt';
 export type ItemMode = 'free' | 'rest' | 'held' | 'slot' | 'onPlate' | 'dead';
 
-export const INGREDIENTS: ItemKind[] = ['bun', 'patty', 'lettuce', 'tomato'];
+export const INGREDIENTS: ItemKind[] = ['bun', 'patty', 'lettuce', 'tomato', 'potato', 'chicken', 'dough', 'cheese', 'lavash', 'doner'];
 
-export const KIND_NAMES: Record<ItemKind, string> = {
-  bun: 'Булка',
-  patty: 'Котлета',
-  lettuce: 'Салат',
-  tomato: 'Помидор',
-  plate: 'Тарелка',
-  knife: 'Нож',
+/** Эти продукты не меняют состояние — в рецепте пишутся просто по имени. */
+const STATELESS: ItemKind[] = ['bun', 'lavash', 'doner'];
+
+/** Название в винительном падеже: «возьмите булку». */
+export const KIND_ACC: Record<ItemKind, string> = {
+  bun: 'булку',
+  patty: 'котлету',
+  lettuce: 'салат',
+  tomato: 'помидор',
+  potato: 'картошку',
+  chicken: 'курицу',
+  dough: 'тесто',
+  cheese: 'сыр',
+  lavash: 'лаваш',
+  doner: 'мясо донера',
+  plate: 'тарелку',
+  knife: 'нож',
 };
 
 /** Ключ ингредиента в рецепте, например «patty:cooked». Булка всегда просто «bun». */
 export function itemKey(kind: ItemKind, state: ItemState): string {
-  return kind === 'bun' ? 'bun' : `${kind}:${state}`;
-}
-
-export function keyName(key: string): string {
-  const [kind, state] = key.split(':') as [ItemKind, ItemState | undefined];
-  const base = KIND_NAMES[kind];
-  if (!state) return base;
-  if (kind === 'patty' && state === 'cooked') return 'Жареная котлета';
-  if (state === 'chopped') return kind === 'lettuce' ? 'Нарезанный салат' : 'Нарезанный помидор';
-  return base;
+  return STATELESS.includes(kind) ? kind : `${kind}:${state}`;
 }
 
 let nextId = 1;
@@ -64,7 +77,24 @@ export class Item {
   }
 
   get key(): string {
+    if (this.kind === 'dough' && this.state === 'cooked' && this.isPizza) return 'pizza';
     return itemKey(this.kind, this.state);
+  }
+
+  /** На основе есть и сыр, и помидор. */
+  get isPizza(): boolean {
+    return this.contents.some((c) => c.kind === 'cheese') && this.contents.some((c) => c.kind === 'tomato');
+  }
+
+  /** Раскатанное тесто — на него кладут начинку. */
+  get isBase(): boolean {
+    return this.kind === 'dough' && this.state === 'chopped';
+  }
+
+  acceptsTopping(item: Item): boolean {
+    if (!this.isBase) return false;
+    if (item.key !== 'tomato:chopped' && item.key !== 'cheese:chopped') return false;
+    return !this.contents.some((c) => c.kind === item.kind);
   }
 
   get isIngredient(): boolean {
@@ -72,7 +102,7 @@ export class Item {
   }
 
   get choppable(): boolean {
-    return (this.kind === 'lettuce' || this.kind === 'tomato') && this.state === 'raw';
+    return ['lettuce', 'tomato', 'cheese', 'potato', 'dough'].includes(this.kind) && this.state === 'raw';
   }
 
   setState(s: ItemState): void {
@@ -80,6 +110,11 @@ export class Item {
     this.state = s;
     this.rebuild();
     this.bounce();
+    // начинка пиццы печётся вместе с основой
+    if (this.kind === 'dough' && (s === 'cooked' || s === 'burnt')) {
+      for (const c of this.contents) c.setState(s);
+      this.layoutBase();
+    }
   }
 
   /** Короткое «пружинящее» сплющивание при постановке. */
@@ -114,6 +149,12 @@ export class Item {
   /** Раскладка содержимого тарелки «стопкой». Булка делится на низ и верх. */
   layoutPlate(): void {
     let y = 0.022;
+    // лаваш всегда снизу
+    const lavash = this.contents.find((c) => c.kind === 'lavash');
+    if (lavash) {
+      lavash.root.position.set(0, y, 0);
+      y += 0.01;
+    }
     const bun = this.contents.find((c) => c.kind === 'bun');
     if (bun) {
       bun.root.position.set(0, y, 0);
@@ -121,7 +162,7 @@ export class Item {
       y += 0.028;
     }
     for (const c of this.contents) {
-      if (c === bun) continue;
+      if (c === bun || c === lavash) continue;
       c.root.position.set(0, y, 0);
       y += c.height * 0.75;
     }
@@ -132,6 +173,17 @@ export class Item {
       y += 0.04;
     }
     this.height = Math.max(0.03, y);
+  }
+
+  /** Начинка на основе пиццы: сыр ниже, помидор сверху. */
+  layoutBase(): void {
+    const sorted = [...this.contents].sort((a, b) => (a.kind === 'cheese' ? -1 : 1) - (b.kind === 'cheese' ? -1 : 1));
+    let y = this.state === 'chopped' ? 0.016 : 0.02;
+    for (const c of sorted) {
+      c.root.position.set(0, y, 0);
+      y += 0.006;
+    }
+    this.height = 0.03 + this.contents.length * 0.006;
   }
 
   setBunSplit(split: boolean): void {
@@ -156,6 +208,12 @@ export class Item {
       return m;
     });
     if (this.highlighted) for (const m of this.materials) m.emissive.setHex(0x553322);
+  }
+
+  /** Удалить вместе со всем, что лежит сверху (тарелка, пицца). */
+  disposeDeep(): void {
+    for (const c of this.contents) c.disposeDeep();
+    this.dispose();
   }
 
   dispose(): void {
@@ -251,6 +309,13 @@ function buildVisual(item: Item, g: THREE.Group, mat: Mat): void {
         add(g, leaf, mat(PALETTE.stem), 0, 0.083, 0, 0.003);
         item.height = 0.1;
         item.radius = 0.055;
+      } else if (s === 'cooked' || s === 'burnt') {
+        // соус на пицце
+        add(g, new THREE.CylinderGeometry(0.03, 0.03, 0.004, 10), mat(s === 'cooked' ? PALETTE.sauce : PALETTE.burnt), 0.045, 0.002, 0.02, 0);
+        add(g, new THREE.CylinderGeometry(0.03, 0.03, 0.004, 10), mat(s === 'cooked' ? PALETTE.sauce : PALETTE.burnt), -0.04, 0.002, 0.035, 0);
+        add(g, new THREE.CylinderGeometry(0.03, 0.03, 0.004, 10), mat(s === 'cooked' ? PALETTE.sauce : PALETTE.burnt), -0.01, 0.002, -0.05, 0);
+        item.height = 0.006;
+        item.radius = 0.1;
       } else {
         const red = mat(PALETTE.tomato);
         const inner = mat(PALETTE.tomatoInner);
@@ -262,6 +327,123 @@ function buildVisual(item: Item, g: THREE.Group, mat: Mat): void {
         item.height = 0.022;
         item.radius = 0.06;
       }
+      break;
+    }
+    case 'potato': {
+      if (s === 'raw') {
+        const body = new THREE.SphereGeometry(0.05, 10, 8);
+        body.scale(1.25, 0.8, 0.9);
+        add(g, body, mat(PALETTE.potato), 0, 0.04, 0);
+        const eye = mat(0x8a5a2e);
+        for (const [x, y, z] of [[0.03, 0.065, 0.015], [-0.035, 0.06, -0.01], [0.0, 0.07, -0.025]]) {
+          const e = new THREE.Mesh(new THREE.SphereGeometry(0.006, 5, 4), eye);
+          e.position.set(x, y, z);
+          g.add(e);
+        }
+        item.height = 0.08;
+        item.radius = 0.065;
+      } else {
+        const stickColor = s === 'chopped' ? PALETTE.potatoInner : s === 'cooked' ? PALETTE.fries : PALETTE.burnt;
+        if (s === 'cooked') {
+          // бумажный кулёк для фри
+          add(g, new THREE.BoxGeometry(0.11, 0.035, 0.075), mat(0xe8402f), 0, 0.0175, 0, 0.004);
+        }
+        const stick = mat(stickColor);
+        const base = s === 'cooked' ? 0.035 : 0.006;
+        for (let i = 0; i < 9; i++) {
+          const st = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.085), stick);
+          st.position.set(((i % 3) - 1) * 0.022, base + Math.floor(i / 3) * 0.011, ((i * 7) % 5) * 0.006 - 0.012);
+          st.rotation.y = ((i * 37) % 11) * 0.06 - 0.3;
+          if (s === 'cooked') st.rotation.x = -0.5 + (i % 3) * 0.25;
+          g.add(st);
+        }
+        item.height = s === 'cooked' ? 0.08 : 0.035;
+        item.radius = 0.06;
+      }
+      break;
+    }
+    case 'chicken': {
+      const color = s === 'raw' ? PALETTE.chickenRaw : s === 'burnt' ? PALETTE.burnt : PALETTE.chickenCooked;
+      const meat = s === 'raw' ? new THREE.SphereGeometry(0.045, 10, 8) : new THREE.IcosahedronGeometry(0.048, 1);
+      meat.scale(1.35, 0.85, 1);
+      add(g, meat, mat(color), -0.015, 0.038, 0);
+      add(g, new THREE.CylinderGeometry(0.009, 0.009, 0.06, 6).rotateZ(Math.PI / 2), mat(PALETTE.bone), 0.065, 0.035, 0, 0.004);
+      add(g, new THREE.SphereGeometry(0.014, 8, 6), mat(PALETTE.bone), 0.095, 0.035, 0, 0.004);
+      item.height = 0.075;
+      item.radius = 0.08;
+      break;
+    }
+    case 'dough': {
+      if (s === 'raw') {
+        const ball = new THREE.SphereGeometry(0.055, 12, 10);
+        ball.scale(1, 0.75, 1);
+        add(g, ball, mat(PALETTE.dough), 0, 0.041, 0);
+        item.height = 0.08;
+        item.radius = 0.065;
+      } else {
+        const color = s === 'chopped' ? PALETTE.dough : s === 'cooked' ? PALETTE.crust : PALETTE.burnt;
+        add(g, new THREE.CylinderGeometry(0.12, 0.12, 0.016, 20), mat(s === 'cooked' ? 0xf3cf86 : color), 0, 0.008, 0);
+        const rim = new THREE.TorusGeometry(0.115, 0.014, 6, 22);
+        rim.rotateX(Math.PI / 2);
+        add(g, rim, mat(color), 0, 0.016, 0, 0.004);
+        item.height = 0.03;
+        item.radius = 0.13;
+      }
+      break;
+    }
+    case 'cheese': {
+      if (s === 'raw') {
+        const wedge = new THREE.CylinderGeometry(0.065, 0.065, 0.045, 3);
+        add(g, wedge, mat(PALETTE.cheese), 0, 0.0225, 0);
+        const hole = mat(0xe8b830);
+        for (const [x, z] of [[0.01, 0.02], [-0.02, -0.01]]) {
+          const h = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.047, 6), hole);
+          h.position.set(x, 0.0225, z);
+          g.add(h);
+        }
+        item.height = 0.045;
+        item.radius = 0.065;
+      } else if (s === 'chopped') {
+        const shred = mat(PALETTE.cheese);
+        for (let i = 0; i < 10; i++) {
+          const sh = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.006, 0.008), shred);
+          const a = i * 2.4;
+          sh.position.set(Math.cos(a) * 0.03 * ((i % 3) / 2 + 0.3), 0.004 + (i % 3) * 0.004, Math.sin(a) * 0.03);
+          sh.rotation.y = a;
+          g.add(sh);
+        }
+        item.height = 0.018;
+        item.radius = 0.055;
+      } else {
+        add(g, new THREE.CylinderGeometry(0.098, 0.1, 0.005, 16), mat(s === 'cooked' ? PALETTE.cheeseMelt : PALETTE.burnt), 0, 0.0025, 0, 0);
+        item.height = 0.006;
+        item.radius = 0.1;
+      }
+      break;
+    }
+    case 'lavash': {
+      add(g, new THREE.CylinderGeometry(0.11, 0.11, 0.008, 16), mat(PALETTE.lavash), 0, 0.004, 0, 0.004);
+      const spot = mat(0xd9b06a);
+      for (let i = 0; i < 5; i++) {
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.009, 6), spot);
+        sp.position.set(Math.cos(i * 1.3) * 0.06, 0.004, Math.sin(i * 1.3) * 0.06);
+        g.add(sp);
+      }
+      item.height = 0.01;
+      item.radius = 0.11;
+      break;
+    }
+    case 'doner': {
+      const c1 = mat(PALETTE.doner);
+      const c2 = mat(PALETTE.donerDark);
+      for (let i = 0; i < 7; i++) {
+        const sh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.008, 0.02), i % 2 ? c1 : c2);
+        sh.position.set(((i * 5) % 7) * 0.008 - 0.024, 0.005 + (i % 3) * 0.007, ((i * 3) % 5) * 0.01 - 0.02);
+        sh.rotation.set(0.2 * (i % 2), i * 0.9, 0.15);
+        g.add(sh);
+      }
+      item.height = 0.025;
+      item.radius = 0.06;
       break;
     }
     case 'plate': {

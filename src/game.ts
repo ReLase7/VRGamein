@@ -23,14 +23,19 @@ interface Settings {
   snapAngle: number;
   sound: boolean;
   tutorial: boolean;
+  /** Блюда, которые игрок уже хоть раз выдал — для них подсказки не нужны. */
+  learned: string[];
 }
 
 const SETTINGS_KEY = 'kitchen-chaos-vr:settings';
 
 function loadSettings(): Settings {
-  const def: Settings = { snapAngle: 45, sound: true, tutorial: true };
+  const def: Settings = { snapAngle: 45, sound: true, tutorial: true, learned: [] };
   try {
-    return { ...def, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>) };
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
+    // В старых версиях подсказки выключались после первого заказа — для новых блюд включаем снова.
+    if (!saved.learned) delete saved.tutorial;
+    return { ...def, ...saved };
   } catch {
     return def;
   }
@@ -67,7 +72,7 @@ export class Game {
   private bellT = 1;
   private fps = 60;
   private desktopAimPoint: THREE.Vector3 | null = null;
-  private desktopAimsBoard = false;
+  private desktopAimBox: THREE.Box3 | null = null;
   private pauseReason: 'vr' | 'unlock' | null = null;
 
   /** Вызывается, когда нужно показать/спрятать HTML-оверлей на ПК. */
@@ -94,7 +99,7 @@ export class Game {
     this.sfx = new Sfx(this.camera);
     this.sfx.setEnabled(this.settings.sound);
     this.world = new ItemWorld(this.scene, this.kitchen, this.sfx, this.fx);
-    this.cooking = new Cooking(this.scene, this.kitchen, this.sfx, this.fx);
+    this.cooking = new Cooking(this.scene, this.kitchen, this.sfx, this.fx, this.world);
     this.world.ensureKnife();
 
     // табло на задней стене
@@ -323,6 +328,7 @@ export class Game {
         break;
       case 'tutorial':
         this.settings.tutorial = !this.settings.tutorial;
+        if (this.settings.tutorial) this.settings.learned = [];
         this.saveSettings();
         this.showMainMenu();
         break;
@@ -385,8 +391,8 @@ export class Game {
       this.fx.confetti(at);
       this.bellT = 0;
       for (const h of this.hands) h.pulse(0.8, 120);
-      if (this.settings.tutorial) {
-        this.settings.tutorial = false;
+      if (!this.settings.learned.includes(res.order.recipe.id)) {
+        this.settings.learned.push(res.order.recipe.id);
         this.saveSettings();
       }
       this.depart(plate);
@@ -473,7 +479,7 @@ export class Game {
     if (playing) {
       const camPos = new THREE.Vector3();
       this.camera.getWorldPosition(camPos);
-      this.cooking.update(dt, hands, camPos, this.desktopAimsBoard);
+      this.cooking.update(dt, hands, camPos, this.desktopAimBox);
       this.orders.update(dt, ROUND_LENGTH);
       this.score.update(dt);
       this.timeLeft -= dt;
@@ -508,8 +514,9 @@ export class Game {
     // ---- подсказки
     let hint = '';
     let target: THREE.Vector3 | null = null;
-    if (playing && this.settings.tutorial && this.score.served === 0) {
-      const first = this.orders.active[0];
+    if (playing && this.settings.tutorial) {
+      // подсказываем по первому заказу с блюдом, которое игрок ещё ни разу не выдавал
+      const first = this.orders.active.find((o) => !this.settings.learned.includes(o.recipe.id));
       if (first) {
         const h = computeHint(first, this.world.items, this.kitchen, this.inVR);
         hint = h.text;
@@ -533,11 +540,20 @@ export class Game {
     this.desktopAimPoint = hit ? hit.point.clone() : null;
     const target = this.world.findByRay(h.ray, REACH, this.raycaster);
     h.hover = target?.item ?? null;
-    const boardItem = this.kitchen.board.occupant;
-    this.desktopAimsBoard =
-      (!!this.desktopAimPoint && this.kitchen.boardBox.containsPoint(this.desktopAimPoint)) ||
-      (!!boardItem && h.hover === boardItem) ||
-      !!h.ray.intersectBox(this.kitchen.boardBox, new THREE.Vector3());
+    // какая станция (доска или вертел) под прицелом — для нарезки клавишей E
+    const k = this.kitchen;
+    const boxes = [...k.boardBoxes, k.spit.box];
+    this.desktopAimBox = null;
+    let bestD = REACH;
+    boxes.forEach((box, i) => {
+      const occupant = i < k.boards.length ? k.boards[i].occupant : null;
+      const p = h.ray.intersectBox(box, new THREE.Vector3());
+      const d = occupant && h.hover === occupant ? 0 : p ? p.distanceTo(h.ray.origin) : Infinity;
+      if (d < bestD) {
+        bestD = d;
+        this.desktopAimBox = box;
+      }
+    });
     const p = new THREE.Vector3();
     this.desktop.holdPoint(p);
     h.track(p, this.time);
